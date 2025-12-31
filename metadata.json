@@ -1,0 +1,9 @@
+{
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "name": "TAT PRO - מערכת ניהול קמפיינים - app",
+  "description": ""
+}
