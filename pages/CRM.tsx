@@ -46,24 +46,53 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
   const editCityRef = useRef<HTMLInputElement>(null);
   const editStreetRef = useRef<HTMLInputElement>(null);
 
-  // אתחול Autocomplete להוספת תורם
+  // פונקציית עזר לבחירת סיווגים (תוקן)
+  const togglePreference = (pref: DonorPreference) => {
+    setNewDonor((prev: any) => {
+      const current = prev.preferences || [];
+      const next = current.includes(pref) 
+        ? current.filter((p: any) => p !== pref) 
+        : [...current, pref];
+      return { ...prev, preferences: next };
+    });
+  };
+
+  // אתחול Autocomplete להוספת תורם (עודכן עם רחוב)
   useEffect(() => {
     if (!placesLib || !crmCityRef.current || !showSingleDonorModal) return;
+    
     const cityAutocomplete = new placesLib.Autocomplete(crmCityRef.current, { types: ['(cities)'], componentRestrictions: { country: 'il' } });
     cityAutocomplete.addListener('place_changed', () => {
       const place = cityAutocomplete.getPlace();
       if (place.name) setNewDonor((prev: any) => ({ ...prev, city: place.name! }));
     });
+
+    if (crmStreetRef.current) {
+      const streetAutocomplete = new placesLib.Autocomplete(crmStreetRef.current, { types: ['address'], componentRestrictions: { country: 'il' } });
+      streetAutocomplete.addListener('place_changed', () => {
+        const place = streetAutocomplete.getPlace();
+        if (place.name) setNewDonor((prev: any) => ({ ...prev, street: place.name! }));
+      });
+    }
   }, [placesLib, showSingleDonorModal]);
 
-  // אתחול Autocomplete לעריכת תורם
+  // אתחול Autocomplete לעריכת תורם (עודכן עם רחוב)
   useEffect(() => {
     if (!placesLib || !editCityRef.current || !isEditing) return;
+    
     const cityAutocomplete = new placesLib.Autocomplete(editCityRef.current, { types: ['(cities)'], componentRestrictions: { country: 'il' } });
     cityAutocomplete.addListener('place_changed', () => {
       const place = cityAutocomplete.getPlace();
       if (place.name) setEditData((prev: any) => ({ ...prev, city: place.name! }));
     });
+
+    if (editStreetRef.current) {
+      const streetAutocomplete = new placesLib.Autocomplete(editStreetRef.current, { types: ['address'], componentRestrictions: { country: 'il' } });
+      streetAutocomplete.addListener('place_changed', () => {
+        const place = streetAutocomplete.getPlace();
+        if (place.name) setEditData((prev: any) => ({ ...prev, street: place.name! }));
+      });
+    }
   }, [placesLib, isEditing]);
 
   const getConnectionLabel = (type: ConnectionType, detail?: string) => {
@@ -264,7 +293,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                              <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">טלפון</label><input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
                              <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">עיר (גוגל)</label><input ref={editCityRef} value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
-                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">רחוב</label><input value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
+                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">רחוב</label><input ref={editStreetRef} value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
                              </div>
                              <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">הערות</label><textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold h-20" /></div>
                              <button onClick={handleUpdateDonor} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"><Save size={14}/> שמור את כל השינויים</button>
@@ -410,7 +439,21 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                        </div>
                     </div>
 
-                    <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">סיווג תורם</label><div className="grid grid-cols-3 gap-2">{['telephonic', 'general_visit', 'purim_day'].map(p => (<button key={p} type="button" onClick={() => togglePreference(p as any)} className={`py-3 rounded-xl border transition-all font-black text-[9px] ${newDonor.preferences?.includes(p as any) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}>{p === 'telephonic' ? '📞 טלפוני' : p === 'purim_day' ? '🎭 פורים' : '🏠 ביקור בית'}</button>))}</div></div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-500 uppercase mr-1">סיווג תורם</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['telephonic', 'general_visit', 'purim_day'].map(p => (
+                          <button 
+                            key={p} 
+                            type="button" 
+                            onClick={() => togglePreference(p as any)} 
+                            className={`py-3 rounded-xl border transition-all font-black text-[9px] ${newDonor.preferences?.includes(p as any) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}
+                          >
+                            {p === 'telephonic' ? '📞 טלפוני' : p === 'purim_day' ? '🎭 פורים' : '🏠 ביקור בית'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
                     <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">הערות כלליות</label><textarea rows={3} value={newDonor.notes} onChange={e => setNewDonor({...newDonor, notes: e.target.value})} placeholder="כתוב הערות חשובות..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold outline-none focus:bg-white transition-all resize-none shadow-sm" /></div>
                  </div>
