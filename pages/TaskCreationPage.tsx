@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Donor, Representative, Path, CallList, Patrol } from '../types';
 import { 
   MapPinned, PhoneCall, Search, Plus, X, Navigation, Clock, 
@@ -6,11 +6,12 @@ import {
   Map as MapIcon, ChevronRight, ListChecks, Activity, Phone, Printer, Sliders, AlertCircle, Eye
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas'; // מומלץ להתקין: npm install html2canvas
+import html2canvas from 'html2canvas';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
 interface TaskCreationPageProps {
   donors: Donor[];
-  setDonors: React.Dispatch<React.SetStateAction<Donor[]>>; // סנכרון CRM גלובלי
+  setDonors: React.Dispatch<React.SetStateAction<Donor[]>>;
   reps: Representative[];
   patrols: Patrol[]; 
   setPaths: React.Dispatch<React.SetStateAction<Path[]>>;
@@ -23,13 +24,31 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   const [repSearch, setRepSearch] = useState('');
   const [patrolSearch, setPatrolSearch] = useState('');
   const [showPreview, setShowPreview] = useState(false);
-  const [showMap, setShowMap] = useState(false); // שליטה על תצוגת המפה
+  const [showMap, setShowMap] = useState(false);
   const [showCustomDonors, setShowCustomDonors] = useState(false);
   const [selectedCustomDonors, setSelectedCustomDonors] = useState<string[]>([]);
   const [donorSearch, setDonorSearch] = useState('');
   const [activeTaskDonors, setActiveTaskDonors] = useState<Donor[]>([]);
 
-  // --- States עבור הטפסים ---
+  // Google Maps Autocomplete Logic
+  const placesLib = useMapsLibrary('places');
+  const cityInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!placesLib || !cityInputRef.current) return;
+    const autocomplete = new placesLib.Autocomplete(cityInputRef.current, {
+      types: ['(cities)'],
+      componentRestrictions: { country: 'il' }
+    });
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (place.name) {
+        if (activeTab === 'patrols') setPatrolForm(prev => ({ ...prev, city: place.name! }));
+        else setPathForm(prev => ({ ...prev, city: place.name! }));
+      }
+    });
+  }, [placesLib, activeTab]);
+
   const [pathForm, setPathForm] = useState({
     name: '', city: 'בני ברק', selectedRepIds: [] as string[],
     transport: 'walking' as 'walking' | 'bus' | 'car',
@@ -43,21 +62,20 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   const [patrolForm, setPatrolForm] = useState({
     selectedPatrolId: '', city: 'ירושלים', neighborhood: '',
     transport: 'car' as 'walking' | 'bus' | 'car',
+    startTime: '10:00', endTime: '18:00',
     maxDistance: 500
   });
 
   const filteredReps = useMemo(() => (reps || []).filter(r => r.name?.toLowerCase().includes(repSearch.toLowerCase())), [reps, repSearch]);
   const filteredPatrols = useMemo(() => (patrols || []).filter(p => p.name?.toLowerCase().includes(patrolSearch.toLowerCase())), [patrols, patrolSearch]);
   
-  // לוגיקת סינון לפי סיווגים (Classifications)
+  // לוגיקת סינון לפי סיווגים (בית/פורים/טלפוני/כללי)
   const purimDonors = useMemo(() => {
     const currentCity = (activeTab === 'patrols' ? patrolForm.city : pathForm.city).trim().toLowerCase();
-    
     return (donors || []).filter(d => {
       const cityMatch = !currentCity || d.city?.trim().toLowerCase().includes(currentCity);
       const statusMatch = !d.assignmentStatus || d.assignmentStatus === 'available' || d.assignmentStatus === 'potential';
       
-      // לוגיקת סיווגים:
       const isGeneral = d.preferences?.includes('general');
       let prefMatch = false;
       if (activeTab === 'paths') prefMatch = d.preferences?.includes('general_visit') || isGeneral;
@@ -73,26 +91,21 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
     setList(list.includes(id) ? list.filter(i => i !== id) : [...list, id]);
   };
 
-  // ייצוא PDF כצילום מסך של כרטיס המשימה
   const exportToPDF = async () => {
     const element = document.getElementById('preview-card');
     if (!element) return;
-    
-    const canvas = await html2canvas(element, { scale: 2 });
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
     const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-    
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`TaskPro_${activeTab}.pdf`);
+    pdf.save(`TaskPro_Export_${new Date().getTime()}.pdf`);
   };
 
   const finalizeTask = () => {
     const donorIds = selectedCustomDonors.length > 0 ? selectedCustomDonors : purimDonors.slice(0, 15).map(d => d.id);
     if (donorIds.length === 0) { alert("לא נבחרו תורמים"); return; }
-
     const selectedDonorsData = donors.filter(d => donorIds.includes(d.id));
     setActiveTaskDonors(selectedDonorsData);
     setDonors(prev => prev.map(d => donorIds.includes(d.id) ? { ...d, assignmentStatus: 'in_treatment' } : d));
@@ -102,10 +115,9 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
   return (
     <div className="h-screen flex flex-col bg-[#f8fafc] overflow-hidden font-sans text-right" dir="rtl">
-      {/* Header */}
       <div className="p-4 bg-white border-b border-slate-200 flex justify-between items-center shrink-0 z-10 shadow-sm">
         <div>
-          <h1 className="text-xl font-black text-slate-900 tracking-tight italic">TASK <span className="text-blue-600">PRO</span></h1>
+          <h1 className="text-xl font-black text-slate-900 italic">TASK <span className="text-blue-600">PRO</span></h1>
           <p className="text-slate-500 font-medium text-[9px] uppercase tracking-widest">מערכת תכנון משימות וסנכרון CRM</p>
         </div>
         <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
@@ -116,12 +128,11 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
       </div>
 
       <div className="flex-1 flex overflow-hidden p-4 gap-4">
-        {/* Left Column - Forms */}
         <div className="w-[380px] flex flex-col gap-4 overflow-y-auto pr-1 scroll-hide shrink-0">
           <div className="bg-white rounded-[30px] border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex justify-between items-center border-b pb-3">
                <h2 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2"><Plus size={14}/> הגדרות משימה</h2>
-               <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[9px] font-black shadow-sm italic">
+               <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[9px] font-black italic shadow-sm">
                   <Activity size={10}/> {purimDonors.length} זמינים לסיווג זה
                </div>
             </div>
@@ -130,7 +141,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
               <div className="space-y-4 animate-in fade-in duration-500">
                 <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">שם המסלול</label><input value={pathForm.name} onChange={e => setPathForm({...pathForm, name: e.target.value})} placeholder="סבב ערב..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white outline-none" /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">עיר</label><input value={pathForm.city} onChange={e => setPathForm({...pathForm, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold" /></div>
+                  <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">עיר (גוגל מפות)</label><input ref={cityInputRef} value={pathForm.city} onChange={e => setPathForm({...pathForm, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold" /></div>
                   <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">שיטה</label>
                     <div className="flex gap-1">
                       {['walking', 'bus', 'car'].map(m => (
@@ -158,7 +169,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                   <input type="range" min="100" max="2000" step="50" value={patrolForm.maxDistance} onChange={e => setPatrolForm({...patrolForm, maxDistance: Number(e.target.value)})} className="w-full h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">עיר</label><input value={patrolForm.city} onChange={e => setPatrolForm({...patrolForm, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold" /></div>
+                  <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">עיר</label><input ref={cityInputRef} value={patrolForm.city} onChange={e => setPatrolForm({...patrolForm, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold" /></div>
                   <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">שכונה</label><input value={patrolForm.neighborhood} onChange={e => setPatrolForm({...patrolForm, neighborhood: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold" /></div>
                 </div>
                 <button type="button" onClick={() => setShowCustomDonors(true)} className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black border border-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all"><ListChecks size={14}/> בחירת כתובות אישית</button>
@@ -191,7 +202,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
           </div>
         </div>
 
-        {/* Right Column - Luxury Preview Area */}
         <div id="preview-card" className="flex-1 bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden relative flex flex-col">
           {!showPreview ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-200 p-10 text-center">
@@ -270,7 +280,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
         </div>
       </div>
 
-      {/* Custom Donor Selector Modal */}
       {showCustomDonors && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-8 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] border border-white/20">
