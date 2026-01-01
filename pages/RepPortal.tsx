@@ -1,15 +1,15 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { Representative, Donation, Path, CallList, Donor, AssignmentStatus, Patrol, SystemMessage, UserRole, PaymentMethod, ClearingSettings } from '../types';
 import { mockRanks } from '../services/mockData';
+import { db } from '../services/db'; // חיבור למסד הנתונים
 import { 
   Home, PlusCircle, Clock, MapPin, 
   X, Smartphone, Wallet, CreditCard, Check, 
   Phone, TrendingUp, Banknote, Sun, Moon, 
   LogOut, MapPinned, PhoneCall, MessageCircle, 
   Navigation2, Share2, Award, Gem, Sprout, Trophy, ChevronLeft,
-  FileText, Landmark, Info
+  FileText, Landmark, Info, Bell, Send, User, MessageSquare
 } from 'lucide-react';
 
 interface RepPortalProps {
@@ -30,7 +30,7 @@ interface RepPortalProps {
 }
 
 const RepPortal: React.FC<RepPortalProps> = ({ 
-  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings
+  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings, systemMessages, sendRepMessage
 }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [showAddDonation, setShowAddDonation] = useState(false);
@@ -38,6 +38,15 @@ const RepPortal: React.FC<RepPortalProps> = ({
   const [activeDonorForReporting, setActiveDonorForReporting] = useState<Donor | null>(null);
   const [reportingStep, setReportingStep] = useState<'initial' | 'amount' | 'details' | 'success'>('initial');
   
+  // State להודעות והתראות
+  const [showMessagesModal, setShowMessagesModal] = useState(false);
+  const [repMessageToAdmin, setRepMessageToAdmin] = useState('');
+
+  // State לשיתוף
+  const [shareText, setShareText] = useState('היי, אני לוקח חלק בקמפיין החשוב הזה! אשמח שתעזור לי להגיע ליעד שלי דרך הלינק האישי:');
+  const [phoneNumbers, setPhoneNumbers] = useState('');
+  const [shareSuccess, setShareSuccess] = useState(false);
+
   const [amount, setAmount] = useState('');
   const [donorName, setDonorName] = useState('');
   const [donorPhone, setDonorPhone] = useState('');
@@ -48,9 +57,17 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   const isDark = theme === 'dark';
 
+  // סנכרון משימות מהמסד
   const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
   const myCallList = useMemo(() => (callLists || []).find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
   
+  // סינון הודעות רלוונטיות לנציג
+  const myMessages = useMemo(() => (systemMessages || []).filter(m => 
+    m.targetType === 'all' || 
+    (m.targetType === 'specific' && m.targetIds?.includes(rep.id)) ||
+    (m.targetType === 'group' && m.targetGroup === rep.groupId)
+  ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [systemMessages, rep]);
+
   const currentRank = useMemo(() => {
     const total = rep?.totalRaised || 0;
     return [...mockRanks].reverse().find(r => total >= r.minAmount) || mockRanks[0];
@@ -81,7 +98,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
        if (paymentMethod === 'cash') finalStatus = 'pending_cash';
        if (paymentMethod === 'online' || paymentMethod === 'credit') finalStatus = 'confirmed'; 
 
-       addDonation({
+       const donationData: Donation = {
         id: Math.random().toString(36).substr(2, 9),
         donorName: donorName || 'תורם כללי',
         donorPhone: donorPhone,
@@ -95,15 +112,64 @@ const RepPortal: React.FC<RepPortalProps> = ({
         source: 'manual_rep',
         bitTargetPhone: (paymentMethod === 'bit' || paymentMethod === 'paybox') ? bitTargetPhone : undefined,
         referenceNumber: (paymentMethod === 'check' || paymentMethod === 'transfer') ? referenceNumber : undefined
-      });
+      };
+
+      addDonation(donationData);
+      
+      // סנכרון ל-Database
+      db.addDonation(donationData);
+      
+      if (activeDonorForReporting) {
+        updateDonorStatus(activeDonorForReporting.id, 'donated');
+        db.saveDonor({ ...activeDonorForReporting, treatmentStatus: 'donated' });
+      }
+
       setReportingStep('success');
     } else {
       if (activeDonorForReporting) {
         const mapping: Record<string, AssignmentStatus> = { refused: 'not_donated', not_home: 'call_back', come_later: 'call_back' };
-        updateDonorStatus(activeDonorForReporting.id, mapping[status] || 'available');
+        const newStatus = mapping[status] || 'available';
+        updateDonorStatus(activeDonorForReporting.id, newStatus);
+        db.saveDonor({ ...activeDonorForReporting, treatmentStatus: status as any });
       }
       setShowAddDonation(false);
     }
+  };
+
+  const handleSendMessageToAdmin = () => {
+    if (!repMessageToAdmin.trim()) return;
+    sendRepMessage(repMessageToAdmin);
+    
+    // סנכרון לשרת
+    const msgId = Math.random().toString(36).substr(2, 9);
+    (db as any).saveToApi?.('repToAdminMessages', {
+      id: msgId,
+      repId: rep.id,
+      repName: rep.name,
+      content: repMessageToAdmin,
+      timestamp: new Date().toISOString(),
+      status: 'new'
+    });
+
+    setRepMessageToAdmin('');
+    alert('ההודעה נשלחה למנהל');
+  };
+
+  const handleBulkShare = (method: 'whatsapp' | 'sms') => {
+    const nums = phoneNumbers.split(/[, \n]+/).filter(n => n.length >= 9);
+    const personalLink = `https://tatpro.online/rep/${rep.username || rep.id}`;
+    const fullMessage = `${shareText}\n${personalLink}`;
+
+    nums.forEach(num => {
+      const formattedNum = num.startsWith('0') ? `972${num.substring(1)}` : num;
+      const url = method === 'whatsapp' 
+        ? `https://wa.me/${formattedNum}?text=${encodeURIComponent(fullMessage)}`
+        : `sms:${num}?body=${encodeURIComponent(fullMessage)}`;
+      window.open(url, '_blank');
+    });
+
+    setShareSuccess(true);
+    setTimeout(() => setShareSuccess(false), 5000);
   };
 
   const RankIcon = ({ name }: { name: string }) => {
@@ -117,6 +183,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'} font-sans pb-32 transition-colors duration-300 overflow-x-hidden relative`} dir="rtl">
+      {/* Header */}
       <div className={`sticky top-0 z-40 w-full ${isDark ? 'bg-slate-900/90 border-white/5' : 'bg-white/90 border-slate-200'} backdrop-blur-xl border-b shadow-sm`}>
         <header className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -132,7 +199,11 @@ const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-             {onBackToAdmin && rep.role !== UserRole.REPRESENTATIVE && (
+              <button onClick={() => setShowMessagesModal(true)} className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl relative">
+                <Bell size={20}/>
+                {myMessages.length > 0 && <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900">{myMessages.length}</span>}
+              </button>
+              {onBackToAdmin && rep.role !== UserRole.REPRESENTATIVE && (
                <button onClick={onBackToAdmin} className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black flex items-center gap-1 shadow-lg active:scale-90 transition-all">
                  <ChevronLeft size={14} /> חזרה לניהול
                </button>
@@ -285,8 +356,78 @@ const RepPortal: React.FC<RepPortalProps> = ({
               </div>
            </div>
         )}
+
+        {activeTab === 'share' && (
+          <div className="space-y-6 animate-fade-in flex flex-col w-full text-right">
+             <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><Share2 size={24}/></div>
+                <div>
+                   <h2 className="text-xl font-black italic leading-none">מרכז השיתוף</h2>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">שלח לינק אישי לנמענים</p>
+                </div>
+             </div>
+
+             <div className={`p-6 rounded-[35px] border ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} space-y-5`}>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase mr-1">הודעה מותאמת אישית</label>
+                   <textarea value={shareText} onChange={e => setShareText(e.target.value)} rows={4} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/5 rounded-2xl p-4 text-xs font-bold outline-none resize-none text-right" />
+                </div>
+
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase mr-1">מספרי טלפון (הפרד בפסיק או רווח)</label>
+                   <input value={phoneNumbers} onChange={e => setPhoneNumbers(e.target.value)} placeholder="0501234567, 0527654321..." className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/5 rounded-2xl p-4 text-xs font-bold outline-none text-right" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                   <button onClick={() => handleBulkShare('whatsapp')} className="py-5 bg-emerald-500 text-white rounded-[24px] font-black text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"><MessageCircle size={18}/> שלח בוואטסאפ</button>
+                   <button onClick={() => handleBulkShare('sms')} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"><Smartphone size={18}/> שלח כ-SMS</button>
+                </div>
+
+                {shareSuccess && (
+                  <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black text-center animate-bounce border border-emerald-100 mt-4">
+                     ✅ ההודעות נשלחו בהצלחה. תוכל לעקוב אחרי ההכנסות מדף הבית באיזור האישי.
+                  </div>
+                )}
+             </div>
+          </div>
+        )}
       </main>
 
+      {/* הודעות והתראות Modal */}
+      {showMessagesModal && (
+        <div className="fixed inset-0 z-[1000] backdrop-blur-3xl bg-slate-900/80 flex items-center justify-center p-4">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[40px] p-6 shadow-2xl animate-fade-in flex flex-col max-h-[80vh]">
+              <div className="flex items-center justify-between mb-6 shrink-0">
+                 <h2 className="text-xl font-black text-right w-full flex items-center gap-2 justify-end">הודעות מהנהלה <Bell size={20} className="text-blue-600"/></h2>
+                 <button onClick={() => setShowMessagesModal(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400"><X size={18}/></button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 scroll-hide">
+                 {myMessages.length === 0 ? (
+                   <div className="py-10 text-center text-slate-400 text-xs font-bold uppercase italic">אין הודעות חדשות</div>
+                 ) : (
+                   myMessages.map(msg => (
+                     <div key={msg.id} className={`p-4 rounded-3xl border-r-4 ${msg.type === 'urgent' ? 'bg-red-50 border-red-500 text-red-900' : 'bg-blue-50 border-blue-500 text-blue-900'}`}>
+                        <h4 className="font-black text-[13px] mb-1">{msg.title}</h4>
+                        <p className="text-[11px] font-medium leading-relaxed">{msg.content}</p>
+                        <p className="text-[8px] opacity-50 mt-2 font-black">{new Date(msg.timestamp).toLocaleString('he-IL')}</p>
+                     </div>
+                   ))
+                 )}
+              </div>
+
+              <div className="pt-6 border-t mt-6 space-y-3">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">שלח הודעה למנהל</p>
+                 <div className="relative">
+                    <textarea value={repMessageToAdmin} onChange={e => setRepMessageToAdmin(e.target.value)} rows={2} placeholder="כתוב כאן..." className="w-full bg-slate-50 dark:bg-slate-800 border rounded-2xl p-4 text-xs font-bold outline-none text-right resize-none" />
+                    <button onClick={handleSendMessageToAdmin} className="absolute left-3 bottom-3 p-2 bg-blue-600 text-white rounded-xl shadow-lg active:scale-90 transition-all"><Send size={16}/></button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Navigation Bottom */}
       <div className={`fixed bottom-0 inset-x-0 z-50 w-full flex justify-center ${isDark ? 'bg-slate-900/95' : 'bg-white/95'} backdrop-blur-3xl border-t border-slate-100 dark:border-white/10 pb-safe`}>
         <nav className="w-full max-w-lg flex items-center justify-around py-4 h-20 px-2">
           <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'home' ? 'text-blue-600 scale-110' : 'text-slate-400'}`}>
@@ -339,14 +480,14 @@ const RepPortal: React.FC<RepPortalProps> = ({
                        <div className="space-y-4">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">בחר אמצעי תשלום</p>
                           <div className="grid grid-cols-3 gap-3">
-                             {(['cash', 'bit', 'paybox', 'online', 'check', 'transfer'] as const).map(m => (
-                                <button key={m} onClick={() => setPaymentMethod(m)} className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-1.5 ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-100 dark:border-white/5'}`}>
-                                    {m === 'cash' ? <Wallet size={20}/> : (m === 'bit' || m === 'paybox') ? <Smartphone size={20}/> : m === 'check' ? <FileText size={20}/> : m === 'transfer' ? <Landmark size={20}/> : <CreditCard size={20}/>}
-                                    <span className="text-[8px] font-black uppercase">
-                                      {m === 'cash' ? 'מזומן' : m === 'bit' ? 'ביט' : m === 'paybox' ? 'פייבוקס' : m === 'check' ? 'שיק' : m === 'transfer' ? 'העברה' : 'אשראי'}
-                                    </span>
-                                </button>
-                             ))}
+                              {(['cash', 'bit', 'paybox', 'online', 'check', 'transfer'] as const).map(m => (
+                                 <button key={m} onClick={() => setPaymentMethod(m)} className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-1.5 ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-100 dark:border-white/5'}`}>
+                                     {m === 'cash' ? <Wallet size={20}/> : (m === 'bit' || m === 'paybox') ? <Smartphone size={20}/> : m === 'check' ? <FileText size={20}/> : m === 'transfer' ? <Landmark size={20}/> : <CreditCard size={20}/>}
+                                     <span className="text-[8px] font-black uppercase">
+                                       {m === 'cash' ? 'מזומן' : m === 'bit' ? 'ביט' : m === 'paybox' ? 'פייבוקס' : m === 'check' ? 'שיק' : m === 'transfer' ? 'העברה' : 'אשראי'}
+                                     </span>
+                                 </button>
+                              ))}
                           </div>
                        </div>
                        <button onClick={() => setReportingStep('details')} className="w-full py-5 bg-slate-900 dark:bg-blue-600 text-white rounded-[28px] font-black shadow-xl text-lg active:scale-95 transition-all">המשך לפרטים</button>
