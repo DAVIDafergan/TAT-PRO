@@ -4,59 +4,72 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
+import * as Models from './models.js'; // ייבוא כל המודלים
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// הגדרות בסיסיות
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
-// חיבור למסד הנתונים
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB via Railway'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+// חיבור גמיש למסד הנתונים (תומך ב-MONGO_URL מהצילום מסך שלך)
+const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URL;
+mongoose.connect(mongoURI)
+  .then(() => console.log('✅ TAT PRO Database Connected'))
+  .catch(err => console.error('❌ Connection Error:', err));
 
-const AppStateSchema = new mongoose.Schema({
-  id: { type: String, default: 'main_db' },
-  content: Object,
-  lastUpdated: { type: Date, default: Date.now }
-}, { minimize: false });
+// --- מנגנון API דינמי לכל סוגי הנתונים ---
 
-const AppState = mongoose.model('AppState', AppStateSchema);
-
-// נתיבי API (הם חייבים להופיע לפני ה-Catch-all)
-app.get('/api/data', async (req, res) => {
+// קבלת נתונים (למשל: /api/donations או /api/campaigns)
+app.get('/api/:collection', async (req, res) => {
   try {
-    const state = await AppState.findOne({ id: 'main_db' });
-    res.json(state ? state.content : null);
-  } catch (err) {
-    res.status(500).json({ error: 'Load failed' });
-  }
+    const { collection } = req.params;
+    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1); // הופך donations ל-Donation
+    const Model = Models[ModelName] || Models[collection.charAt(0).toUpperCase() + collection.slice(1)];
+    
+    if (!Model) return res.status(404).send('Collection not found');
+    
+    const data = await Model.find();
+    res.json(data);
+  } catch (err) { res.status(500).json(err); }
 });
 
-app.post('/api/data', async (req, res) => {
+// שמירה/עדכון נתונים (מזהה אוטומטית לפי ה-ID של האובייקט)
+app.post('/api/:collection', async (req, res) => {
   try {
-    await AppState.findOneAndUpdate(
-      { id: 'main_db' },
-      { content: req.body, lastUpdated: new Date() },
-      { upsert: true }
+    const { collection } = req.params;
+    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1);
+    const Model = Models[ModelName] || Models[collection.charAt(0).toUpperCase() + collection.slice(1)];
+    
+    if (!Model) return res.status(404).send('Collection not found');
+
+    // מבצע Update אם קיים ID, אחרת יוצר חדש (Upsert)
+    const result = await Model.findOneAndUpdate(
+      { id: req.body.id },
+      req.body,
+      { upsert: true, new: true }
     );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Save failed' });
-  }
+    res.json(result);
+  } catch (err) { res.status(500).json(err); }
 });
 
-// --- הגשת קבצי האתר (Frontend) ---
-app.use(express.static(path.join(__dirname, '../dist')));
+// מחיקת נתונים
+app.delete('/api/:collection/:id', async (req, res) => {
+  try {
+    const { collection, id } = req.params;
+    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1);
+    const Model = Models[ModelName];
+    await Model.findOneAndDelete({ id: id });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json(err); }
+});
 
-// ✅ התיקון הסופי: שימוש ב-Regex (ביטוי רגולרי) כדי לעקוף את השגיאה
-// המבנה /.*/ אומר ל-Express לתפוס הכל בלי להשתמש בספרייה הבעייתית
+// --- הגשת האתר ---
+app.use(express.static(path.join(__dirname, '../dist')));
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 TAT PRO Server Live on ${PORT}`));

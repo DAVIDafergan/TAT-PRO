@@ -3,12 +3,12 @@ import { mockCampaigns, mockRepresentatives, mockDonors, mockDonations, mockRank
 
 const DB_KEY = 'tat_pro_db_v1';
 const SYNC_CHANNEL = 'tat_pro_sync_channel';
-// כתובת השרת ב-Railway (תתעדכן אוטומטית לפי ה-Deploy)
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/data';
+// כתובת ה-API הבסיסית (השרת שבנינו יודע לנתב לפי שם הקולקשן)
+const API_BASE = '/api';
 
 const syncChannel = new BroadcastChannel(SYNC_CHANNEL);
 
-interface DBStore {
+export interface DBStore {
   campaigns: Campaign[];
   representatives: Representative[];
   donors: Donor[];
@@ -37,34 +37,82 @@ const initialClearingSettings: ClearingSettings = {
   paybox: { mode: 'manual', manualPhones: ['0547778899'] }
 };
 
-const charidyMocks: Donation[] = [
-  { id: 'ch1', donorName: 'ישראל אברהם', amount: 1800, representativeId: 'r1', representativeName: 'איתמר לוי', timestamp: new Date(Date.now() - 3600000).toISOString(), method: 'online', campaignId: '1', status: 'confirmed', source: 'charidy' },
-  { id: 'ch2', donorName: 'משפחת גולדשטיין', amount: 360, representativeId: 'r2', representativeName: 'יונתן רפאלי', timestamp: new Date(Date.now() - 7200000).toISOString(), method: 'bit', campaignId: '1', status: 'confirmed', source: 'charidy' },
-  { id: 'ch3', donorName: 'תורם אנונימי', amount: 500, representativeId: 'r1', representativeName: 'איתמר לוי', timestamp: new Date(Date.now() - 10800000).toISOString(), method: 'online', campaignId: '1', status: 'confirmed', source: 'charidy' },
-  { id: 'ch4', donorName: 'יוסף כהן - מנצ׳סטר', amount: 1200, representativeId: 'r4', representativeName: 'אלעד שטיינר', timestamp: new Date(Date.now() - 14400000).toISOString(), method: 'online', campaignId: '1', status: 'confirmed', source: 'charidy' }
-];
+// פונקציית עזר לקריאות API מסודרות
+const fetchFromApi = async (collection: string) => {
+  try {
+    const res = await fetch(`${API_BASE}/${collection}`);
+    return res.ok ? await res.json() : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+const saveToApi = async (collection: string, data: any) => {
+  try {
+    await fetch(`${API_BASE}/${collection}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.error(`Sync failed for ${collection}`);
+  }
+};
 
 export const db = {
   loadAll: async (): Promise<DBStore> => {
-    // 1. ניסיון טעינה מ-MongoDB
+    // 1. ניסיון טעינה מסודרת מה-MongoDB (כל טבלה בנפרד)
     try {
-      const response = await fetch(API_URL);
-      if (response.ok) {
-        const remoteData = await response.json();
-        if (remoteData) return remoteData;
+      const [
+        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers
+      ] = await Promise.all([
+        fetchFromApi('donors'),
+        fetchFromApi('donations'),
+        fetchFromApi('campaigns'),
+        fetchFromApi('users'),
+        fetchFromApi('paths'),
+        fetchFromApi('patrols'),
+        fetchFromApi('groups'),
+        fetchFromApi('expenses'),
+        fetchFromApi('customers')
+      ]);
+
+      // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
+      if (donors && donors.length > 0) {
+        return {
+          donors,
+          donations: donations || [],
+          campaigns: campaigns || [],
+          representatives: (users || []).filter((u: any) => u.role === 'REPRESENTATIVE'),
+          managers: (users || []).filter((u: any) => u.role !== 'REPRESENTATIVE'),
+          paths: paths || [],
+          patrols: patrols || [],
+          groups: groups || [],
+          expenses: expenses || [],
+          customers: customers || [],
+          // שאר השדות יישארו מה-Mocks או מ-LocalStorage אם אין בענן
+          ranks: mockRanks,
+          gifts: mockGifts,
+          lotteries: mockLotteries,
+          repToAdminMessages: [],
+          repTasks: [],
+          dailyReports: [],
+          systemMessages: mockSystemMessages,
+          clearingSettings: initialClearingSettings
+        };
       }
     } catch (e) {
-      console.warn("MongoDB not reachable, using local data");
+      console.warn("Cloud DB partially reachable, falling back to local");
     }
 
-    // 2. לוגיקת LocalStorage המקורית (ללא שינוי אות אחת)
-    const data = localStorage.getItem(DB_KEY);
-    if (!data) {
+    // 2. לוגיקת LocalStorage המקורית כגיבוי (Fallback)
+    const localData = localStorage.getItem(DB_KEY);
+    if (!localData) {
       const initialStore: DBStore = {
         campaigns: mockCampaigns,
         representatives: mockRepresentatives,
         donors: mockDonors,
-        donations: [...mockDonations, ...charidyMocks],
+        donations: mockDonations,
         expenses: [],
         paths: mockPaths,
         callLists: mockCallLists,
@@ -77,87 +125,49 @@ export const db = {
           { id: 'g5', name: 'ועד', color: '#f43f5e', shnaton: 'תשפ"ב' },
           { id: 'g6', name: 'אברכים', color: '#475569', shnaton: 'תשפ"א' }
         ],
-        managers: [
-          { 
-            id: 'm1', 
-            name: 'ישראל כהן', 
-            username: 'israel', 
-            password: '123', 
-            role: UserRole.CAMPAIGN_MANAGER, 
-            managerArea: 'כספים ובקרה', 
-            allowedPages: ['dashboard', 'donations', 'cash_management', 'expenses'] 
-          },
-          { 
-            id: 'm2', 
-            name: 'משה לוי', 
-            username: 'moshe', 
-            password: '123', 
-            role: UserRole.CAMPAIGN_MANAGER, 
-            managerArea: 'לוגיסטיקה שטח', 
-            allowedPages: ['dashboard', 'crm', 'war_room'] 
-          },
-          { 
-            id: 'm3', 
-            name: 'אברהם פריד', 
-            username: 'avraham', 
-            password: '123', 
-            role: UserRole.CAMPAIGN_MANAGER, 
-            managerArea: 'ניהול תגמולים', 
-            allowedPages: ['dashboard', 'rewards', 'messages'] 
-          }
-        ],
+        managers: [],
         ranks: mockRanks,
         gifts: mockGifts,
         lotteries: mockLotteries,
-        patrols: [
-          { id: 'p1', name: 'סיירת מרכז - בני ברק', city: 'בני ברק', repIds: ['r1', 'r4'], type: 'regular' },
-          { id: 'p2', name: 'סיירת פורים - ירושלים', city: 'ירושלים', repIds: ['r2', 'r5'], type: 'purim_day' },
-          { id: 'p3', name: 'סיירת דרום - נתיבות', city: 'נתיבות', repIds: ['r3'], type: 'purim_day' },
-          { id: 'p4', name: 'סיירת צפון - צפת', city: 'צפת', repIds: [], type: 'purim_day' }
-        ],
-        repToAdminMessages: [
-          { id: 'msg1', repId: 'r1', repName: 'איתמר לוי', content: 'הגעתי לכתובת בחזון איש 15 אבל אין מענה בפעמון, להמשיך הלאה?', timestamp: new Date(Date.now() - 300000).toISOString(), status: 'new' },
-          { id: 'msg2', repId: 'r2', repName: 'יונתן רפאלי', content: 'התורם שאל אם אפשר לקבל קבלה של 46, אמרתי לו שתבדקו.', timestamp: new Date(Date.now() - 1800000).toISOString(), status: 'new' }
-        ],
-        repTasks: [
-          { id: 't1', title: 'גיוס ראשון היום', description: 'דווח על תרומה ראשונה לפני השעה 12:00', rewardPoints: 50, status: 'open', category: 'daily' },
-          { id: 't2', title: 'שיתוף בסטטוס', description: 'שתף את הלינק האישי שלך בסטטוס הוואטסאפ ושלח צילום מסך', rewardPoints: 20, status: 'open', category: 'special' }
-        ],
+        patrols: [],
+        repToAdminMessages: [],
+        repTasks: [],
         dailyReports: [],
         systemMessages: mockSystemMessages,
         clearingSettings: initialClearingSettings
       };
-      db.saveAll(initialStore);
       return initialStore;
     }
-    const parsed = JSON.parse(data);
-    if (!parsed.customers) parsed.customers = mockCustomers;
-    if (!parsed.clearingSettings) parsed.clearingSettings = initialClearingSettings;
-    return parsed;
+    return JSON.parse(localData);
   },
 
+  // שמירה "מסודרת" - כל חלק נשמר לטבלה שלו ב-MongoDB
   saveAll: async (store: DBStore) => {
-    // 1. שמירה ל-LocalStorage (ללא שינוי)
+    // שמירה מקומית (ללא שינוי)
     localStorage.setItem(DB_KEY, JSON.stringify(store));
     syncChannel.postMessage('db_updated');
 
-    // 2. שמירה ל-MongoDB בענן
-    try {
-      await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(store)
-      });
-    } catch (e) {
-      console.error("Failed to sync with MongoDB");
-    }
+    // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
+    // השרת שבנינו יודע לקחת את ה-id ולבצע update או create
+    await Promise.all([
+      ...store.donors.map(d => saveToApi('donors', d)),
+      ...store.donations.map(d => saveToApi('donations', d)),
+      ...store.campaigns.map(c => saveToApi('campaigns', c)),
+      ...store.representatives.map(r => saveToApi('users', r)),
+      ...store.managers.map(m => saveToApi('users', m)),
+      ...store.paths.map(p => saveToApi('paths', p)),
+      ...store.expenses.map(e => saveToApi('expenses', e))
+    ]);
   },
+
+  // פונקציות עזר לשמירה של פריט בודד (לביצועים טובים יותר)
+  saveDonor: (donor: Donor) => saveToApi('donors', donor),
+  addDonation: (donation: Donation) => saveToApi('donations', donation),
+  saveUser: (user: User) => saveToApi('users', user),
 
   onSync: (callback: () => void) => {
     syncChannel.onmessage = (event) => {
-      if (event.data === 'db_updated') {
-        callback();
-      }
+      if (event.data === 'db_updated') callback();
     };
   }
 };
