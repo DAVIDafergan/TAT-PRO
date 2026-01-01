@@ -4,7 +4,6 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
-import * as Models from './models.js'; // ייבוא כל המודלים
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -19,47 +18,135 @@ mongoose.connect(mongoURI)
   .then(() => console.log('✅ TAT PRO Database Connected'))
   .catch(err => console.error('❌ Connection Error:', err));
 
-// --- מנגנון API דינמי לכל סוגי הנתונים ---
+// --- הגדרת המודלים (Schemas) ישירות כאן כדי למנוע נתק ---
 
-// קבלת נתונים (למשל: /api/donations או /api/campaigns)
+const donorSchema = new mongoose.Schema({ id: String }, { strict: false });
+const donationSchema = new mongoose.Schema({ id: String }, { strict: false });
+const userSchema = new mongoose.Schema({ id: String }, { strict: false });
+const groupSchema = new mongoose.Schema({ id: String }, { strict: false });
+const expenseSchema = new mongoose.Schema({ id: String }, { strict: false });
+const customerSchema = new mongoose.Schema({ id: String }, { strict: false });
+const rankSchema = new mongoose.Schema({ id: String }, { strict: false });
+const giftSchema = new mongoose.Schema({ id: String }, { strict: false });
+const lotterySchema = new mongoose.Schema({ id: String }, { strict: false });
+const patrolSchema = new mongoose.Schema({ id: String }, { strict: false });
+
+// מודלים חדשים שהיו חסרים ולכן לא נשמרו:
+const pathSchema = new mongoose.Schema({ 
+  id: String, 
+  assignedRepIds: [String], // קריטי לסינון נציגים
+  addresses: Array 
+}, { strict: false });
+
+const callListSchema = new mongoose.Schema({ 
+  id: String, 
+  assignedRepIds: [String], // קריטי לסינון נציגים
+  donors: Array 
+}, { strict: false });
+
+const repMessageSchema = new mongoose.Schema({ 
+  id: String, 
+  repId: String, 
+  status: String 
+}, { strict: false });
+
+const systemMessageSchema = new mongoose.Schema({ 
+  id: String, 
+  targetIds: [String] 
+}, { strict: false });
+
+// יצירת המודלים ב-Mongoose
+const Models = {
+  Donor: mongoose.model('Donor', donorSchema),
+  Donation: mongoose.model('Donation', donationSchema),
+  User: mongoose.model('User', userSchema),
+  Group: mongoose.model('Group', groupSchema),
+  Expense: mongoose.model('Expense', expenseSchema),
+  Customer: mongoose.model('Customer', customerSchema),
+  Rank: mongoose.model('Rank', rankSchema),
+  Gift: mongoose.model('Gift', giftSchema),
+  Lottery: mongoose.model('Lottery', lotterySchema),
+  Patrol: mongoose.model('Patrol', patrolSchema),
+  // החדשים:
+  Path: mongoose.model('Path', pathSchema),
+  CallList: mongoose.model('CallList', callListSchema),
+  RepMessage: mongoose.model('RepMessage', repMessageSchema),
+  SystemMessage: mongoose.model('SystemMessage', systemMessageSchema)
+};
+
+// פונקציית מיפוי חכמה (פותרת את הבעיה של שמות ארוכים)
+const getModel = (collection) => {
+  switch (collection) {
+    case 'donors': return Models.Donor;
+    case 'donations': return Models.Donation;
+    case 'campaigns': return Models.Campaign || mongoose.model('Campaign', new mongoose.Schema({ id: String }, { strict: false }));
+    case 'users': return Models.User;
+    case 'groups': return Models.Group;
+    case 'expenses': return Models.Expense;
+    case 'customers': return Models.Customer;
+    case 'ranks': return Models.Rank;
+    case 'gifts': return Models.Gift;
+    case 'lotteries': return Models.Lottery;
+    case 'patrols': return Models.Patrol;
+    // החיבורים החשובים שתוקנו:
+    case 'paths': return Models.Path;
+    case 'callLists': return Models.CallList;
+    case 'repToAdminMessages': return Models.RepMessage; // תיקון קריטי!
+    case 'systemMessages': return Models.SystemMessage;
+    default: return null;
+  }
+};
+
+// --- מנגנון API ---
+
+// קבלת נתונים
 app.get('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
-    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1); // הופך donations ל-Donation
-    const Model = Models[ModelName] || Models[collection.charAt(0).toUpperCase() + collection.slice(1)];
+    const Model = getModel(collection);
     
-    if (!Model) return res.status(404).send('Collection not found');
+    if (!Model) {
+      console.error(`Collection not found: ${collection}`);
+      return res.status(404).send('Collection not found');
+    }
     
     const data = await Model.find();
     res.json(data);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json(err); 
+  }
 });
 
-// שמירה/עדכון נתונים (מזהה אוטומטית לפי ה-ID של האובייקט)
+// שמירה/עדכון נתונים
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
-    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1);
-    const Model = Models[ModelName] || Models[collection.charAt(0).toUpperCase() + collection.slice(1)];
+    const Model = getModel(collection);
     
     if (!Model) return res.status(404).send('Collection not found');
 
-    // מבצע Update אם קיים ID, אחרת יוצר חדש (Upsert)
+    // Upsert: מעדכן אם קיים, יוצר אם לא
     const result = await Model.findOneAndUpdate(
       { id: req.body.id },
       req.body,
       { upsert: true, new: true }
     );
     res.json(result);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json(err); 
+  }
 });
 
 // מחיקת נתונים
 app.delete('/api/:collection/:id', async (req, res) => {
   try {
     const { collection, id } = req.params;
-    const ModelName = collection.charAt(0).toUpperCase() + collection.slice(1, -1);
-    const Model = Models[ModelName];
+    const Model = getModel(collection);
+    
+    if (!Model) return res.status(404).send('Collection not found');
+
     await Model.findOneAndDelete({ id: id });
     res.json({ success: true });
   } catch (err) { res.status(500).json(err); }
@@ -67,7 +154,7 @@ app.delete('/api/:collection/:id', async (req, res) => {
 
 // --- הגשת האתר ---
 app.use(express.static(path.join(__dirname, '../dist')));
-app.get(/.*/, (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
