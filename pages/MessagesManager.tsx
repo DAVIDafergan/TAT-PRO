@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
 import { Representative, SystemMessage, RepToAdminMessage } from '../types';
+import { db } from '../services/db'; // חיבור למסד הנתונים
 import { 
   Send, Users, User, LayoutGrid, X, CheckCircle2, MessageSquare, 
   AlertCircle, Info, Search, Mail, Clock, Trash2, ArrowLeft,
@@ -52,12 +52,27 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
     alert("הודעה שוגרה בהצלחה!");
   };
 
-  const handleReply = (msgId: string) => {
+  // תיקון פונקציית התגובה - שולחת הודעת מערכת חזרה לנציג ומעדכנת את השרת
+  const handleReply = async (msg: RepToAdminMessage) => {
     if (!replyText) return;
-    alert(`תגובה נשלחה לנציג: ${replyText}`);
-    setIncomingMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'replied' } : m));
+    
+    // 1. שליחת הודעת מערכת לנציג הספציפי
+    sendSystemMessage({
+      title: `תגובה מהמנהלת: ${msg.content.substring(0, 15)}...`,
+      content: replyText,
+      type: 'info',
+      targetType: 'specific',
+      targetIds: [msg.repId]
+    });
+
+    // 2. עדכון סטטוס ההודעה הנכנסת ל-'replied' בשרת ובמצב המקומי
+    const updatedMsg = { ...msg, status: 'replied' as const };
+    setIncomingMessages(prev => prev.map(m => m.id === msg.id ? updatedMsg : m));
+    await db.saveRepToAdminMessage(updatedMsg);
+
     setReplyingToId(null);
     setReplyText('');
+    alert(`תגובה נשלחה לנציג: ${msg.repName}`);
   };
 
   const [autoRules, setAutoRules] = useState([
@@ -228,15 +243,15 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
                               </div>
                               <div className="flex-1">
                                  <div className="flex justify-between items-start mb-2">
-                                    <div>
+                                   <div>
                                        <h4 className="text-sm font-black text-slate-900">{msg.repName}</h4>
                                        <p className="text-[9px] text-slate-400 font-black tabular-nums">{new Date(msg.timestamp).toLocaleString('he-IL')}</p>
-                                    </div>
-                                    {msg.status === 'new' ? (
+                                   </div>
+                                   {msg.status === 'new' ? (
                                       <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase animate-pulse">ממתין למענה</span>
-                                    ) : msg.status === 'replied' ? (
+                                   ) : msg.status === 'replied' ? (
                                       <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-3 py-1 rounded-full text-[8px] font-black uppercase">נענה</span>
-                                    ) : null}
+                                   ) : null}
                                  </div>
                                  <p className="text-sm font-bold text-slate-600 leading-relaxed">{msg.content}</p>
                                  
@@ -251,7 +266,7 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
                                       />
                                       <div className="flex justify-end gap-2">
                                          <button onClick={() => setReplyingToId(null)} className="px-4 py-2 text-[10px] font-black text-slate-400">ביטול</button>
-                                         <button onClick={() => handleReply(msg.id)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-lg">שלח תגובה</button>
+                                         <button onClick={() => handleReply(msg)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-lg">שלח תגובה</button>
                                       </div>
                                    </div>
                                  ) : (
@@ -260,7 +275,7 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
                                          <Reply size={14} /> השב לנציג
                                       </button>
                                       {msg.status === 'new' && (
-                                        <button onClick={() => setIncomingMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'read' } : m))} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-400 font-black text-[10px] rounded-xl">סמן כנקרא</button>
+                                         <button onClick={() => setIncomingMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'read' } : m))} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-400 font-black text-[10px] rounded-xl">סמן כנקרא</button>
                                       )}
                                    </div>
                                  )}

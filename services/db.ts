@@ -64,7 +64,7 @@ export const db = {
     // 1. ניסיון טעינה מסודרת מה-MongoDB (כל טבלה בנפרד)
     try {
       const [
-        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers, ranks, gifts, lotteries, messages
+        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers, ranks, gifts, lotteries, messages, callLists, repToAdminMessages
       ] = await Promise.all([
         fetchFromApi('donors'),
         fetchFromApi('donations'),
@@ -78,7 +78,9 @@ export const db = {
         fetchFromApi('ranks'),
         fetchFromApi('gifts'),
         fetchFromApi('lotteries'),
-        fetchFromApi('systemMessages')
+        fetchFromApi('systemMessages'),
+        fetchFromApi('callLists'), // הוספת רשימות שיחות
+        fetchFromApi('repToAdminMessages') // הוספת הודעות נציגים
       ]);
 
       // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
@@ -98,10 +100,10 @@ export const db = {
           gifts: gifts || mockGifts,
           lotteries: lotteries || mockLotteries,
           systemMessages: messages || mockSystemMessages,
-          repToAdminMessages: [],
+          repToAdminMessages: repToAdminMessages || [],
           repTasks: [],
           dailyReports: [],
-          callLists: mockCallLists,
+          callLists: callLists || mockCallLists,
           clearingSettings: initialClearingSettings
         };
       }
@@ -153,7 +155,6 @@ export const db = {
     syncChannel.postMessage('db_updated');
 
     // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
-    // השרת שבנינו יודע לנתב את הבקשות ל-Collections הנכונים לפי שם הנתיב
     const syncTasks = [
       ...store.donors.map(d => saveToApi('donors', d)),
       ...store.donations.map(d => saveToApi('donations', d)),
@@ -163,10 +164,12 @@ export const db = {
       ...store.groups.map(g => saveToApi('groups', g)),
       ...store.patrols.map(p => saveToApi('patrols', p)),
       ...store.paths.map(p => saveToApi('paths', p)),
+      ...store.callLists.map(cl => saveToApi('callLists', cl)), // שמירת שיחות
       ...store.ranks.map(r => saveToApi('ranks', r)),
       ...store.gifts.map(g => saveToApi('gifts', g)),
       ...store.lotteries.map(l => saveToApi('lotteries', l)),
       ...store.systemMessages.map(m => saveToApi('systemMessages', m)),
+      ...store.repToAdminMessages.map(rm => saveToApi('repToAdminMessages', rm)), // שמירת הודעות נציגים
       ...store.expenses.map(e => saveToApi('expenses', e)),
       ...store.customers.map(c => saveToApi('customers', c))
     ];
@@ -178,17 +181,13 @@ export const db = {
     }
   },
 
-  // פונקציות עזר לשמירה של פריט בודד (לביצועים טובים יותר)
+  // פונקציות עזר לשמירה של פריט בודד
   saveDonor: (donor: Donor) => saveToApi('donors', donor),
   addDonation: (donation: Donation) => saveToApi('donations', donation),
   saveUser: (user: User) => saveToApi('users', user),
-  saveCampaign: (campaign: Campaign) => saveToApi('campaigns', campaign),
-  saveGroup: (group: CampaignGroup) => saveToApi('groups', group),
-  savePatrol: (patrol: Patrol) => saveToApi('patrols', patrol),
-  saveRank: (rank: RankDefinition) => saveToApi('ranks', rank),
-  saveGift: (gift: Gift) => saveToApi('gifts', gift),
-  saveLottery: (lottery: Lottery) => saveToApi('lotteries', lottery),
-  saveExpense: (expense: Expense) => saveToApi('expenses', expense),
+  savePath: (path: Path) => saveToApi('paths', path),
+  saveCallList: (cl: CallList) => saveToApi('callLists', cl),
+  saveRepToAdminMessage: (msg: RepToAdminMessage) => saveToApi('repToAdminMessages', msg),
 
   onSync: (callback: () => void) => {
     syncChannel.onmessage = (event) => {
