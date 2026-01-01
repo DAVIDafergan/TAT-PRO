@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Representative, SystemMessage, RepToAdminMessage } from '../types';
-import { db } from '../services/db'; // חיבור למסד הנתונים
+import { db } from '../services/db'; // הוספת הייבוא החסר לסנכרון
 import { 
   Send, Users, User, LayoutGrid, X, CheckCircle2, MessageSquare, 
   AlertCircle, Info, Search, Mail, Clock, Trash2, ArrowLeft,
@@ -52,11 +52,14 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
     alert("הודעה שוגרה בהצלחה!");
   };
 
-  // תיקון פונקציית התגובה - שולחת הודעת מערכת חזרה לנציג ומעדכנת את השרת
-  const handleReply = async (msg: RepToAdminMessage) => {
+  // תיקון פונקציית התגובה - שולחת הודעת מערכת ומעדכנת DB
+  const handleReply = async (msgId: string) => {
     if (!replyText) return;
     
-    // 1. שליחת הודעת מערכת לנציג הספציפי
+    const msg = incomingMessages.find(m => m.id === msgId);
+    if (!msg) return;
+
+    // 1. שליחת הודעת מערכת (System Message) לנציג
     sendSystemMessage({
       title: `תגובה מהמנהלת: ${msg.content.substring(0, 15)}...`,
       content: replyText,
@@ -66,8 +69,8 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
     });
 
     // 2. עדכון סטטוס ההודעה הנכנסת ל-'replied' בשרת ובמצב המקומי
-    const updatedMsg = { ...msg, status: 'replied' as const };
-    setIncomingMessages(prev => prev.map(m => m.id === msg.id ? updatedMsg : m));
+    const updatedMsg: RepToAdminMessage = { ...msg, status: 'replied' };
+    setIncomingMessages(prev => prev.map(m => m.id === msgId ? updatedMsg : m));
     await db.saveRepToAdminMessage(updatedMsg);
 
     setReplyingToId(null);
@@ -266,7 +269,7 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
                                       />
                                       <div className="flex justify-end gap-2">
                                          <button onClick={() => setReplyingToId(null)} className="px-4 py-2 text-[10px] font-black text-slate-400">ביטול</button>
-                                         <button onClick={() => handleReply(msg)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-lg">שלח תגובה</button>
+                                         <button onClick={() => handleReply(msg.id)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-lg">שלח תגובה</button>
                                       </div>
                                    </div>
                                  ) : (
