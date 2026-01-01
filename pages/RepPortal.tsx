@@ -55,8 +55,9 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   const isDark = theme === 'dark';
 
-  const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
-  const myCallList = useMemo(() => (callLists || []).find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
+  // שינוי: בחירת המשימה האחרונה שנוספה (כך שחדשה מחליפה ישנה)
+  const myActivePath = useMemo(() => [...(paths || [])].reverse().find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
+  const myCallList = useMemo(() => [...(callLists || [])].reverse().find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
   
   // סנכרון דו-כיווני: קבלת הודעות מהמנהל
   const myMessages = useMemo(() => (systemMessages || []).filter(m => 
@@ -115,7 +116,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
       addDonation(donationData);
       db.addDonation(donationData);
       
-      // עדכון ה-CRM: הוספת סכום התרומה לפרטי התורם ושינוי סטטוס
+      // עדכון ה-CRM: הוספת סכום התרומה לפרטי התורם ושינוי סטטוס לתרם
       if (activeDonorForReporting) {
         const updatedDonor = { 
           ...activeDonorForReporting, 
@@ -306,12 +307,14 @@ const RepPortal: React.FC<RepPortalProps> = ({
                     </span>
                 </div>
                 <div className="space-y-4">
-                  {(myCallList?.donors || []).map(donor => (
-                      <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
-                          <div onClick={() => handleReportVisit(donor)} className="w-14 h-14 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-[22px] flex items-center justify-center shrink-0 group-hover:bg-orange-600 group-hover:text-white transition-all cursor-pointer">
-                            <ClipboardEdit size={24}/>
+                  {(myCallList?.donors || []).map(donor => {
+                      const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated';
+                      return (
+                      <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
+                          <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-14 h-14 rounded-[22px] flex items-center justify-center shrink-0 transition-all ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 group-hover:bg-orange-600 group-hover:text-white cursor-pointer'}`}>
+                            {isHandled ? <Check size={24}/> : <ClipboardEdit size={24}/>}
                           </div>
-                          <div className="flex-1 min-w-0 text-right" onClick={() => handleReportVisit(donor)}>
+                          <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(donor) : undefined}>
                               <h4 className="text-sm font-black truncate">{donor.firstName} {donor.lastName}</h4>
                               <p className="text-[10px] text-slate-400 font-bold tabular-nums mt-0.5">{donor.phone}</p>
                           </div>
@@ -324,7 +327,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                               </button>
                           </div>
                       </div>
-                  ))}
+                  )})}
                 </div>
             </div>
         )}
@@ -357,10 +360,14 @@ const RepPortal: React.FC<RepPortalProps> = ({
               </div>
 
               <div className="space-y-4">
-                {(myActivePath?.addresses || []).map((donor, idx) => (
-                   <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
-                      <div onClick={() => handleReportVisit(donor)} className="w-12 h-12 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-2xl flex items-center justify-center font-black group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0 cursor-pointer">{idx + 1}</div>
-                      <div className="flex-1 min-w-0 text-right" onClick={() => handleReportVisit(donor)}>
+                {(myActivePath?.addresses || []).map((donor, idx) => {
+                   const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated';
+                   return (
+                   <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
+                      <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white cursor-pointer'}`}>
+                        {isHandled ? <Check size={20}/> : idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(donor) : undefined}>
                          <h4 className="text-[14px] font-black truncate">{donor.firstName} {donor.lastName}</h4>
                          <p className="text-[10px] text-slate-400 font-bold truncate flex items-center gap-1 mt-0.5 justify-end"><MapPin size={10}/> {(donor.street || '')} {(donor.building || '')}</p>
                       </div>
@@ -368,7 +375,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                         <PlusCircle size={24}/>
                       </button>
                    </div>
-                ))}
+                )})}
               </div>
            </div>
         )}
