@@ -79,8 +79,8 @@ export const db = {
         fetchFromApi('gifts'),
         fetchFromApi('lotteries'),
         fetchFromApi('systemMessages'),
-        fetchFromApi('callLists'), // הוספת רשימות שיחות
-        fetchFromApi('repToAdminMessages') // הוספת הודעות נציגים
+        fetchFromApi('callLists'), // הוספת רשימות שיחות לטעינה מהשרת
+        fetchFromApi('repToAdminMessages') // הוספת הודעות נציגים לטעינה מהשרת
       ]);
 
       // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
@@ -103,7 +103,7 @@ export const db = {
           repToAdminMessages: repToAdminMessages || [],
           repTasks: [],
           dailyReports: [],
-          callLists: callLists || mockCallLists,
+          callLists: callLists || [], // החלפת המוק בנתונים האמיתיים מהשרת
           clearingSettings: initialClearingSettings
         };
       }
@@ -155,6 +155,7 @@ export const db = {
     syncChannel.postMessage('db_updated');
 
     // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
+    // השרת שבנינו יודע לנתב את הבקשות ל-Collections הנכונים לפי שם הנתיב
     const syncTasks = [
       ...store.donors.map(d => saveToApi('donors', d)),
       ...store.donations.map(d => saveToApi('donations', d)),
@@ -181,10 +182,17 @@ export const db = {
     }
   },
 
-  // פונקציות עזר לשמירה של פריט בודד
+  // פונקציות עזר לשמירה של פריט בודד (לביצועים טובים יותר)
   saveDonor: (donor: Donor) => saveToApi('donors', donor),
   addDonation: (donation: Donation) => saveToApi('donations', donation),
   saveUser: (user: User) => saveToApi('users', user),
+  saveCampaign: (campaign: Campaign) => saveToApi('campaigns', campaign),
+  saveGroup: (group: CampaignGroup) => saveToApi('groups', group),
+  savePatrol: (patrol: Patrol) => saveToApi('patrols', patrol),
+  saveRank: (rank: RankDefinition) => saveToApi('ranks', rank),
+  saveGift: (gift: Gift) => saveToApi('gifts', gift),
+  saveLottery: (lottery: Lottery) => saveToApi('lotteries', lottery),
+  saveExpense: (expense: Expense) => saveToApi('expenses', expense),
   savePath: (path: Path) => saveToApi('paths', path),
   saveCallList: (cl: CallList) => saveToApi('callLists', cl),
   saveRepToAdminMessage: (msg: RepToAdminMessage) => saveToApi('repToAdminMessages', msg),

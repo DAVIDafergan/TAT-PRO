@@ -1,199 +1,205 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { APIProvider } from '@vis.gl/react-google-maps';
-import { User, UserRole, Campaign, Representative, Donation, Donor, Path, CallList, AssignmentStatus, SystemMessage, RepToAdminMessage, Lottery, Expense, CampaignGroup, Patrol, RankDefinition, Gift, RepTask, DailyReport, Customer, ClearingSettings } from './types';
-import { db } from './services/db';
-import { mockPaths, mockCallLists, mockDonors, mockRepresentatives, mockCampaigns } from './services/mockData';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import CampaignManager from './pages/Campaigns';
-import RepresentativesPage from './pages/Representatives';
-import RepPortal from './pages/RepPortal';
-import ProjectionScreen from './pages/ProjectionScreen';
-import WarRoom from './pages/WarRoom';
-import CRMPage from './pages/CRM';
-import RewardsManager from './pages/RewardsManager';
-import MessagesManager from './pages/MessagesManager';
-import DonationsPage from './pages/DonationsPage';
-import CashManagement from './pages/CashManagement';
-import ExpensesPage from './pages/ExpensesPage';
-import Studio from './pages/Studio';
-import SettingsPage from './pages/Settings';
-import CustomersPage from './pages/Customers';
-import Registration from './pages/Registration';
-import DevHandoff from './pages/DevHandoff';
-import TaskCreationPage from './pages/TaskCreationPage';
-import Sidebar from './components/Sidebar';
+import { Customer, Campaign, Representative, Donation, Donor, Expense, Path, CallList, CampaignGroup, User, Patrol, RankDefinition, Gift, Lottery, UserRole, RepToAdminMessage, RepTask, DailyReport, SystemMessage, ClearingSettings } from '../types';
+import { mockCampaigns, mockRepresentatives, mockDonors, mockDonations, mockRanks, mockGifts, mockLotteries, mockPaths, mockCallLists, mockSystemMessages, mockCustomers } from './mockData';
 
-const App: React.FC = () => {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [activeCampaignId, setActiveCampaignId] = useState<string>('');
-  const [allRepresentatives, setAllRepresentatives] = useState<Representative[]>([]);
-  const [allDonors, setAllDonors] = useState<Donor[]>([]);
-  const [allDonations, setAllDonations] = useState<Donation[]>([]);
-  const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
-  const [allPaths, setAllPaths] = useState<Path[]>([]);
-  const [allCallLists, setAllCallLists] = useState<CallList[]>([]);
-  const [campaignGroups, setCampaignGroups] = useState<CampaignGroup[]>([]);
-  const [managers, setManagers] = useState<User[]>([]);
-  const [ranks, setRanks] = useState<RankDefinition[]>([]);
-  const [gifts, setGifts] = useState<Gift[]>([]);
-  const [lotteries, setLotteries] = useState<Lottery[]>([]);
-  const [patrols, setPatrols] = useState<Patrol[]>([]);
-  const [repToAdminMessages, setRepToAdminMessages] = useState<RepToAdminMessage[]>([]);
-  const [systemMessages, setSystemMessages] = useState<SystemMessage[]>([]);
-  const [repTasks, setRepTasks] = useState<RepTask[]>([]);
-  const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
-  const [clearingSettings, setClearingSettings] = useState<ClearingSettings>({
-    transfer: { bankDetails: '' },
-    check: { payableTo: '' },
-    bit: { mode: 'manual', manualPhones: [] },
-    paybox: { mode: 'manual', manualPhones: [] }
-  });
+const DB_KEY = 'tat_pro_db_v1';
+const SYNC_CHANNEL = 'tat_pro_sync_channel';
+// כתובת ה-API הבסיסית (השרת שבנינו יודע לנתב לפי שם הקולקשן)
+const API_BASE = '/api';
 
-  const [activeLotteryForProjection, setActiveLotteryForProjection] = useState<Lottery | null>(null);
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('tat_pro_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  
-  const [currentPage, setCurrentPage] = useState<string>(user ? (user.role === UserRole.REPRESENTATIVE ? 'rep_portal' : 'dashboard') : 'login');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const isLoaded = useRef(false);
+const syncChannel = new BroadcastChannel(SYNC_CHANNEL);
 
-  const refreshFromDB = useCallback(async () => {
-    setIsSyncing(true);
-    const data = await db.loadAll();
-    
-    if (data) {
-      setCampaigns(data.campaigns || mockCampaigns);
-      if (!activeCampaignId && data.campaigns?.length > 0) setActiveCampaignId(data.campaigns[0].id);
-      setAllRepresentatives(data.representatives || mockRepresentatives);
-      setAllDonors(data.donors || mockDonors);
-      setAllDonations(data.donations || []);
-      setAllExpenses(data.expenses || []);
-      setAllPaths(data.paths || []);
-      setAllCallLists(data.callLists || []);
-      setCampaignGroups(data.groups || []);
-      setManagers(data.managers || []);
-      setRanks(data.ranks || []);
-      setGifts(data.gifts || []);
-      setLotteries(data.lotteries || []);
-      setPatrols(data.patrols || []);
-      setRepToAdminMessages(data.repToAdminMessages || []);
-      setRepTasks(data.repTasks || []);
-      setDailyReports(data.dailyReports || []);
-      setSystemMessages(data.systemMessages || []);
-      setAllCustomers(data.customers || []);
-      setClearingSettings(data.clearingSettings);
-    }
-    
-    isLoaded.current = true;
-    setTimeout(() => setIsSyncing(false), 300);
-  }, [activeCampaignId]);
+export interface DBStore {
+  campaigns: Campaign[];
+  representatives: Representative[];
+  donors: Donor[];
+  donations: Donation[];
+  expenses: Expense[];
+  paths: Path[];
+  callLists: CallList[];
+  groups: CampaignGroup[];
+  managers: User[];
+  ranks: RankDefinition[];
+  gifts: Gift[];
+  lotteries: Lottery[];
+  patrols: Patrol[];
+  repToAdminMessages: RepToAdminMessage[];
+  repTasks: RepTask[];
+  dailyReports: DailyReport[];
+  systemMessages: SystemMessage[];
+  customers: Customer[];
+  clearingSettings: ClearingSettings;
+}
 
-  useEffect(() => {
-    refreshFromDB();
-    const interval = setInterval(refreshFromDB, 10000); 
-    db.onSync(() => refreshFromDB());
-    return () => clearInterval(interval);
-  }, [refreshFromDB]);
-
-  useEffect(() => {
-    if (isLoaded.current && (campaigns.length > 0 || allCustomers.length > 0)) {
-      db.saveAll({
-        campaigns, representatives: allRepresentatives, donors: allDonors, donations: allDonations,
-        expenses: allExpenses, paths: allPaths, callLists: allCallLists,
-        groups: campaignGroups, managers, ranks, gifts, lotteries, patrols, repToAdminMessages,
-        repTasks, dailyReports, systemMessages, customers: allCustomers, clearingSettings
-      });
-    }
-  }, [campaigns, allRepresentatives, allDonors, allDonations, allExpenses, allPaths, allCallLists, campaignGroups, managers, ranks, gifts, lotteries, patrols, repToAdminMessages, repTasks, dailyReports, systemMessages, allCustomers, clearingSettings]);
-
-  const sendRepMessage = async (content: string) => {
-    if (!user) return;
-    const newMessage: RepToAdminMessage = {
-      id: Math.random().toString(36).substr(2, 9),
-      repId: user.id,
-      repName: user.name,
-      content,
-      timestamp: new Date().toISOString(),
-      status: 'new'
-    };
-    setRepToAdminMessages(prev => [newMessage, ...prev]);
-    await db.saveRepToAdminMessage(newMessage);
-  };
-
-  const filteredDonors = useMemo(() => allDonors.filter(d => d.campaignId === activeCampaignId || !d.campaignId), [allDonors, activeCampaignId]);
-  const filteredReps = useMemo(() => allRepresentatives.filter(r => r.campaignId === activeCampaignId || !r.campaignId), [allRepresentatives, activeCampaignId]);
-  const filteredDonations = useMemo(() => allDonations.filter(d => d.campaignId === activeCampaignId), [allDonations, activeCampaignId]);
-  const activeCampaign = useMemo(() => campaigns.find(c => c.id === activeCampaignId) || campaigns[0], [campaigns, activeCampaignId]);
-
-  const handleLogin = (u: User) => {
-    setUser(u);
-    localStorage.setItem('tat_pro_user', JSON.stringify(u));
-    setCurrentPage(u.role === UserRole.REPRESENTATIVE ? 'rep_portal' : 'dashboard');
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('tat_pro_user');
-    setCurrentPage('login');
-  };
-
-  const addDonation = (donation: Donation) => {
-    const isCash = donation.method === 'cash';
-    const donationWithStatus: Donation = { ...donation, status: isCash ? 'pending_cash' : 'confirmed', campaignId: activeCampaignId, source: donation.source || 'system' };
-    setAllDonations(prev => [donationWithStatus, ...prev]);
-    if (!isCash) {
-      setCampaigns(prev => prev.map(c => c.id === activeCampaignId ? { ...c, raised: (c.raised || 0) + donation.amount } : c));
-      setAllRepresentatives(prev => prev.map(r => r.id === donation.representativeId ? { ...r, totalRaised: (r.totalRaised || 0) + donation.amount } : r));
-    }
-  };
-
-  const showSidebar = user && user.role !== UserRole.REPRESENTATIVE && currentPage !== 'projection' && currentPage !== 'rep_portal' && currentPage !== 'registration' && currentPage !== 'dev_handoff';
-
-  const renderPage = () => {
-    if (currentPage === 'registration') return <Registration onRegister={(c) => setAllCustomers(prev => [c, ...prev])} onBack={() => setCurrentPage('login')} />;
-    if (currentPage === 'dev_handoff') return <DevHandoff />;
-    if (!user) return <Login onLogin={handleLogin} managers={managers} allReps={allRepresentatives} onRegisterClick={() => setCurrentPage('registration')} />;
-
-    switch (currentPage) {
-      case 'dashboard': return <Dashboard campaigns={campaigns} donations={filteredDonations.filter(d => d.status === 'confirmed')} representatives={filteredReps} setCurrentPage={setCurrentPage} />;
-      case 'customers': return <CustomersPage customers={allCustomers} setCustomers={setAllCustomers} />;
-      case 'campaigns': return <CampaignManager campaigns={campaigns} setCampaigns={setCampaigns} activeCampaignId={activeCampaignId} setActiveCampaignId={setActiveCampaignId} donors={filteredDonors} setDonors={setAllDonors} reps={filteredReps} setReps={setAllRepresentatives} />;
-      case 'reps': return <RepresentativesPage reps={filteredReps} setReps={setAllRepresentatives} activeCampaignId={activeCampaignId} managers={managers} setManagers={setManagers} groups={campaignGroups} setGroups={setCampaignGroups} patrols={patrols} setPatrols={setPatrols} />;
-      case 'donations': return <DonationsPage donations={filteredDonations} addDonation={addDonation} reps={filteredReps} campaigns={campaigns} activeCampaignId={activeCampaignId} donors={filteredDonors} groups={campaignGroups} />;
-      case 'cash_management': return <CashManagement donations={filteredDonations} representatives={filteredReps} onConfirm={(rid, famt, pids) => {
-          setAllDonations(prev => prev.map(d => pids.includes(d.id) ? { ...d, status: 'confirmed', verifiedBy: user.name, verifiedAt: new Date().toLocaleTimeString('he-IL') } : d));
-          setCampaigns(prev => prev.map(c => c.id === activeCampaignId ? { ...c, raised: (c.raised || 0) + famt } : c));
-          setAllRepresentatives(prev => prev.map(r => r.id === rid ? { ...r, totalRaised: (r.totalRaised || 0) + famt } : r));
-      }} />;
-      case 'expenses': return <ExpensesPage expenses={allExpenses} setExpenses={setAllExpenses} donations={filteredDonations.filter(d => d.status === 'confirmed')} campaigns={campaigns} activeCampaignId={activeCampaignId} />;
-      case 'rep_portal': return <RepPortal rep={allRepresentatives.find(r => r.id === user?.id) || (user as any)} patrols={patrols} allReps={allRepresentatives} donations={allDonations} addDonation={addDonation} paths={allPaths} callLists={allCallLists} updateDonorStatus={(did, s) => setAllDonors(prev => prev.map(d => d.id === did ? {...d, assignmentStatus: s} : d))} systemMessages={systemMessages} sendRepMessage={sendRepMessage} donors={allDonors} onLogout={handleLogout} onBackToAdmin={() => setCurrentPage('dashboard')} clearingSettings={clearingSettings} />;
-      case 'projection': return <ProjectionScreen campaign={activeCampaign} representatives={filteredReps} donations={filteredDonations.filter(d => d.status === 'confirmed')} onBack={() => {setCurrentPage('dashboard'); setActiveLotteryForProjection(null);}} activeLottery={activeLotteryForProjection} allLotteries={lotteries} onLotteryComplete={(id, winner) => setLotteries(prev => prev.map(l => l.id === id ? {...l, winnerName: winner, status: 'completed'} : l))} groups={campaignGroups} />;
-      case 'crm': return <CRMPage donors={allDonors} setDonors={setAllDonors} activeCampaignId={activeCampaignId} reps={filteredReps} paths={allPaths} callLists={allCallLists} />;
-      case 'task_creation': return <TaskCreationPage donors={allDonors} setDonors={setAllDonors} reps={filteredReps} patrols={patrols} setPaths={setAllPaths} setCallLists={setAllCallLists} activeCampaignId={activeCampaignId} />;
-      case 'rewards': return <RewardsManager lotteries={lotteries} setLotteries={setLotteries} ranks={ranks} setRanks={setRanks} gifts={gifts} setGifts={setGifts} onTriggerDraw={(l) => { setActiveLotteryForProjection(l); setCurrentPage('projection'); }} representatives={filteredReps} donations={filteredDonations} />;
-      case 'settings': return <SettingsPage setCurrentPage={setCurrentPage} user={user} clearingSettings={clearingSettings} setClearingSettings={setClearingSettings} />;
-      case 'war_room': return <WarRoom representatives={filteredReps} donors={allDonors} donations={filteredDonations} paths={allPaths} />;
-      case 'messages': return <MessagesManager reps={filteredReps} sendSystemMessage={(msg) => setSystemMessages(prev => [{...msg, id: Math.random().toString(36).substr(2,9), timestamp: new Date().toISOString()}, ...prev])} incomingMessages={repToAdminMessages} setIncomingMessages={setRepToAdminMessages} />;
-      default: return <Dashboard campaigns={campaigns} donations={filteredDonations.filter(d => d.status === 'confirmed')} representatives={filteredReps} setCurrentPage={setCurrentPage} />;
-    }
-  };
-
-  return (
-    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY} libraries={['places', 'routes', 'geometry', 'marker']}>
-      <div className="flex min-h-screen bg-[#F9FAFB] overflow-x-hidden font-sans relative">
-        {showSidebar && <Sidebar activePage={currentPage} setPage={setCurrentPage} onLogout={handleLogout} user={user!} isSyncing={isSyncing} />}
-        <main className={`flex-1 transition-all duration-300 ${showSidebar ? 'md:pr-72' : ''}`}>
-          <div className="max-w-[1600px] mx-auto min-h-screen relative">
-            {renderPage()}
-          </div>
-        </main>
-      </div>
-    </APIProvider>
-  );
+const initialClearingSettings: ClearingSettings = {
+  transfer: { bankDetails: 'בנק פאג"י (52), סניף בני ברק (182), חשבון 123456' },
+  check: { payableTo: 'מוסדות התורה והחסד' },
+  bit: { mode: 'manual', manualPhones: ['0501112233', '0524445566'] },
+  paybox: { mode: 'manual', manualPhones: ['0547778899'] }
 };
 
-export default App;
+// פונקציית עזר לקריאות API מסודרות
+const fetchFromApi = async (collection: string) => {
+  try {
+    const res = await fetch(`${API_BASE}/${collection}`);
+    return res.ok ? await res.json() : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+const saveToApi = async (collection: string, data: any) => {
+  try {
+    await fetch(`${API_BASE}/${collection}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.error(`Sync failed for ${collection}`);
+  }
+};
+
+export const db = {
+  loadAll: async (): Promise<DBStore> => {
+    // 1. ניסיון טעינה מסודרת מה-MongoDB (כל טבלה בנפרד)
+    try {
+      const [
+        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers, ranks, gifts, lotteries, messages, callLists, repToAdminMessages
+      ] = await Promise.all([
+        fetchFromApi('donors'),
+        fetchFromApi('donations'),
+        fetchFromApi('campaigns'),
+        fetchFromApi('users'),
+        fetchFromApi('paths'),
+        fetchFromApi('patrols'),
+        fetchFromApi('groups'),
+        fetchFromApi('expenses'),
+        fetchFromApi('customers'),
+        fetchFromApi('ranks'),
+        fetchFromApi('gifts'),
+        fetchFromApi('lotteries'),
+        fetchFromApi('systemMessages'),
+        fetchFromApi('callLists'), // הוספת רשימות שיחות
+        fetchFromApi('repToAdminMessages') // הוספת הודעות נציגים
+      ]);
+
+      // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
+      if (donors && donors.length > 0) {
+        return {
+          donors,
+          donations: donations || [],
+          campaigns: campaigns || [],
+          representatives: (users || []).filter((u: any) => u.role === UserRole.REPRESENTATIVE),
+          managers: (users || []).filter((u: any) => u.role !== UserRole.REPRESENTATIVE),
+          paths: paths || [],
+          patrols: patrols || [],
+          groups: groups || [],
+          expenses: expenses || [],
+          customers: customers || [],
+          ranks: ranks || mockRanks,
+          gifts: gifts || mockGifts,
+          lotteries: lotteries || mockLotteries,
+          systemMessages: messages || mockSystemMessages,
+          repToAdminMessages: repToAdminMessages || [],
+          repTasks: [],
+          dailyReports: [],
+          callLists: callLists || [],
+          clearingSettings: initialClearingSettings
+        };
+      }
+    } catch (e) {
+      console.warn("Cloud DB partially reachable, falling back to local");
+    }
+
+    // 2. לוגיקת LocalStorage המקורית כגיבוי (Fallback)
+    const localData = localStorage.getItem(DB_KEY);
+    if (!localData) {
+      const initialStore: DBStore = {
+        campaigns: mockCampaigns,
+        representatives: mockRepresentatives,
+        donors: mockDonors,
+        donations: mockDonations,
+        expenses: [],
+        paths: mockPaths,
+        callLists: mockCallLists,
+        customers: mockCustomers,
+        groups: [
+          { id: 'g1', name: 'שיעור א\'', color: '#2563eb', shnaton: 'תשפ"ו' },
+          { id: 'g2', name: 'שיעור ב\'', color: '#8b5cf6', shnaton: 'תשפ"ה' },
+          { id: 'g3', name: 'שיעור ג\'', color: '#f59e0b', shnaton: 'תשפ"ד' },
+          { id: 'g4', name: 'שיעור ד\'', color: '#10b981', shnaton: 'תשפ"ג' },
+          { id: 'g5', name: 'ועד', color: '#f43f5e', shnaton: 'תשפ"ב' },
+          { id: 'g6', name: 'אברכים', color: '#475569', shnaton: 'תשפ"א' }
+        ],
+        managers: [],
+        ranks: mockRanks,
+        gifts: mockGifts,
+        lotteries: mockLotteries,
+        patrols: [],
+        repToAdminMessages: [],
+        repTasks: [],
+        dailyReports: [],
+        systemMessages: mockSystemMessages,
+        clearingSettings: initialClearingSettings
+      };
+      db.saveAll(initialStore);
+      return initialStore;
+    }
+    return JSON.parse(localData);
+  },
+
+  // שמירה "מסודרת" - כל חלק נשמר לטבלה שלו ב-MongoDB
+  saveAll: async (store: DBStore) => {
+    // שמירה מקומית (ללא שינוי)
+    localStorage.setItem(DB_KEY, JSON.stringify(store));
+    syncChannel.postMessage('db_updated');
+
+    // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
+    // השרת שבנינו יודע לנתב את הבקשות ל-Collections הנכונים לפי שם הנתיב
+    const syncTasks = [
+      ...store.donors.map(d => saveToApi('donors', d)),
+      ...store.donations.map(d => saveToApi('donations', d)),
+      ...store.campaigns.map(c => saveToApi('campaigns', c)),
+      ...store.representatives.map(r => saveToApi('users', r)),
+      ...store.managers.map(m => saveToApi('users', m)),
+      ...store.groups.map(g => saveToApi('groups', g)),
+      ...store.patrols.map(p => saveToApi('patrols', p)),
+      ...store.paths.map(p => saveToApi('paths', p)),
+      ...store.callLists.map(cl => saveToApi('callLists', cl)), // שמירת שיחות
+      ...store.ranks.map(r => saveToApi('ranks', r)),
+      ...store.gifts.map(g => saveToApi('gifts', g)),
+      ...store.lotteries.map(l => saveToApi('lotteries', l)),
+      ...store.systemMessages.map(m => saveToApi('systemMessages', m)),
+      ...store.repToAdminMessages.map(rm => saveToApi('repToAdminMessages', rm)), // שמירת הודעות נציגים
+      ...store.expenses.map(e => saveToApi('expenses', e)),
+      ...store.customers.map(c => saveToApi('customers', c))
+    ];
+    
+    try {
+      await Promise.all(syncTasks);
+    } catch (e) {
+      console.error("Failed to sync all data to MongoDB");
+    }
+  },
+
+  // פונקציות עזר לשמירה של פריט בודד
+  saveDonor: (donor: Donor) => saveToApi('donors', donor),
+  addDonation: (donation: Donation) => saveToApi('donations', donation),
+  saveUser: (user: User) => saveToApi('users', user),
+  saveCampaign: (campaign: Campaign) => saveToApi('campaigns', campaign),
+  saveGroup: (group: CampaignGroup) => saveToApi('groups', group),
+  savePatrol: (patrol: Patrol) => saveToApi('patrols', patrol),
+  saveRank: (rank: RankDefinition) => saveToApi('ranks', rank),
+  saveGift: (gift: Gift) => saveToApi('gifts', gift),
+  saveLottery: (lottery: Lottery) => saveToApi('lotteries', lottery),
+  saveExpense: (expense: Expense) => saveToApi('expenses', expense),
+  savePath: (path: Path) => saveToApi('paths', path),
+  saveCallList: (cl: CallList) => saveToApi('callLists', cl),
+  saveRepToAdminMessage: (msg: RepToAdminMessage) => saveToApi('repToAdminMessages', msg),
+
+  onSync: (callback: () => void) => {
+    syncChannel.onmessage = (event) => {
+      if (event.data === 'db_updated') callback();
+    };
+  }
+};
