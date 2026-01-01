@@ -7,7 +7,7 @@ import {
   UserMinus, ClipboardList, Clock, Activity, Star, Download, Upload, FileText, AlertTriangle, Save
 } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
-import * as XLSX from 'xlsx'; // יש להתקין: npm install xlsx
+import * as XLSX from 'xlsx';
 
 interface CRMPageProps {
   donors: Donor[];
@@ -39,7 +39,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
 
   const [editData, setEditData] = useState<any>(null);
 
-  // Google Maps Autocomplete
+  // Google Maps Logic
   const placesLib = useMapsLibrary('places');
   const crmCityRef = useRef<HTMLInputElement>(null);
   const crmStreetRef = useRef<HTMLInputElement>(null);
@@ -122,13 +122,19 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     setNewDonor({ firstName: '', lastName: '', city: 'בני ברק', street: '', building: '', floor: '', apartment: '', addressNotes: '', phone: '', preferences: ['general_visit'], connectionType: 'general', connectionDetail: '', potentialRank: 3, notes: '', assignedRepIds: [], treatmentStatus: 'available', callbackTime: '' });
   };
 
+  const handleDeleteDonor = (id: string) => {
+    if (window.confirm("האם אתה בטוח שברצונך למחוק תורם זה? הפעולה לצמיתות.")) {
+      setDonors(prev => prev.filter(d => d.id !== id));
+      setSelectedDonor(null);
+    }
+  };
+
   const handleUpdateDonor = () => {
     setDonors(prev => prev.map(d => d.id === editData.id ? { ...editData } : d));
     setSelectedDonor(editData);
     setIsEditing(false);
   };
 
-  // פונקציות אקסל
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(donors);
     const wb = XLSX.utils.book_new();
@@ -137,9 +143,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
   };
 
   const downloadTemplate = () => {
-    const template = [
-      { firstName: "ישראל", lastName: "ישראלי", phone: "0501234567", city: "בני ברק", street: "חזון איש", building: "10", notes: "תורם ותיק" }
-    ];
+    const template = [{ firstName: "ישראל", lastName: "ישראלי", phone: "0501234567", city: "בני ברק", street: "חזון איש", building: "10", notes: "תורם ותיק" }];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Template");
@@ -152,30 +156,16 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     reader.onload = (evt: any) => {
       const bstr = evt.target.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
+      const ws = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(ws);
-      
       const importedDonors = data.map((row: any) => ({
         id: Math.random().toString(36).substr(2, 9),
-        firstName: row.firstName || 'חדש',
-        lastName: row.lastName || '',
-        phone: row.phone || '',
-        city: row.city || 'בני ברק',
-        street: row.street || '',
-        building: row.building || '',
-        preferences: [importClassification],
-        status: 'potential',
-        assignmentStatus: 'available', // כל תורם חדש הוא פנוי
-        totalDonated: 0,
-        potentialRank: 3,
-        notes: row.notes || '',
-        campaignId: activeCampaignId
+        firstName: row.firstName || 'חדש', lastName: row.lastName || '',
+        phone: row.phone || '', city: row.city || 'בני ברק', street: row.street || '', building: row.building || '',
+        preferences: [importClassification], status: 'potential', assignmentStatus: 'available', totalDonated: 0, potentialRank: 3, notes: row.notes || '', campaignId: activeCampaignId
       }));
-
       setDonors(prev => [...importedDonors, ...prev]);
       setShowImportModal(false);
-      alert(`${importedDonors.length} תורמים נוספו כ"פנויים". גוגל מפות יאמת את הכתובות בזמן אמת ביצירת מסלול.`);
     };
     reader.readAsBinaryString(file);
   };
@@ -188,8 +178,17 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     });
   };
 
+  const toggleRepAssignment = (repId: string) => {
+    setNewDonor((prev: any) => {
+      const current = prev.assignedRepIds || [];
+      const next = current.includes(repId) ? current.filter((id: any) => id !== repId) : [...current, repId];
+      return { ...prev, assignedRepIds: next };
+    });
+  };
+
   return (
     <div className="p-8 animate-fade-in bg-[#f8fafc] min-h-screen font-sans" dir="rtl">
+      {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
            <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">ניהול תורמים <span className="text-blue-600">INTEL CRM</span></h1>
@@ -211,6 +210,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
       </div>
 
       <div className="grid grid-cols-12 gap-8">
+        {/* Table View */}
         <div className={selectedDonor ? 'col-span-12 lg:col-span-8' : 'col-span-12'}>
             <div className="bg-white rounded-[35px] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
                 <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center">
@@ -242,11 +242,15 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
             </div>
         </div>
 
+        {/* Donor Card View */}
         {selectedDonor && (
             <div className="col-span-12 lg:col-span-4 animate-fade-in">
                 <div className="bg-white rounded-[30px] border border-slate-200 shadow-xl overflow-hidden sticky top-8">
                     <div className="p-5 bg-slate-900 text-white relative overflow-hidden">
-                        <button onClick={() => setSelectedDonor(null)} className="absolute top-4 left-4 p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-all z-20"><X size={14}/></button>
+                        <div className="flex gap-2 absolute top-4 left-4 z-20">
+                           <button onClick={() => handleDeleteDonor(selectedDonor.id)} className="p-1.5 bg-red-500/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
+                           <button onClick={() => setSelectedDonor(null)} className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-all"><X size={14}/></button>
+                        </div>
                         <div className="flex justify-between items-start relative z-10 mb-4">
                             <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-2xl font-black shadow-xl">{selectedDonor.firstName.charAt(0)}</div>
                             <div className="flex flex-col items-end gap-1">
@@ -263,13 +267,15 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                     <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto scroll-hide">
                         {isEditing ? (
                           <div className="space-y-4 animate-fade-in">
-                             <input value={editData.firstName} onChange={e => setEditData({...editData, firstName: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="שם פרטי" />
-                             <input value={editData.lastName} onChange={e => setEditData({...editData, lastName: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="שם משפחה" />
-                             <input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="טלפון" />
-                             <input value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="עיר" />
-                             <input value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="רחוב" />
-                             <textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="w-full bg-slate-50 border p-2 rounded-lg text-xs" placeholder="הערות" />
-                             <button onClick={handleUpdateDonor} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2"><Save size={14}/> שמור שינויים</button>
+                             <div className="grid grid-cols-2 gap-2">
+                                <input value={editData.firstName} onChange={e => setEditData({...editData, firstName: e.target.value})} className="bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" placeholder="שם פרטי" />
+                                <input value={editData.lastName} onChange={e => setEditData({...editData, lastName: e.target.value})} className="bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" placeholder="שם משפחה" />
+                             </div>
+                             <input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" placeholder="טלפון" />
+                             <input value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" placeholder="עיר" />
+                             <input value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" placeholder="רחוב" />
+                             <textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold h-20" placeholder="הערות" />
+                             <button onClick={handleUpdateDonor} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"><Save size={14}/> שמור את כל השינויים</button>
                           </div>
                         ) : (
                           <>
@@ -277,34 +283,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                                 <div className="flex items-center gap-2"><Activity size={14} className="text-blue-600"/><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">סטטוס טיפול</span></div>
                                 <span className="text-xs font-black text-slate-900">{getStatusLabel(selectedDonor.treatmentStatus)}</span>
                             </div>
-                            
                             <div className="grid grid-cols-2 gap-4">
                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">עיר</p><p className="text-xs font-bold">{selectedDonor.city}</p></div>
                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">רחוב</p><p className="text-xs font-bold">{selectedDonor.street} {selectedDonor.building}</p></div>
                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">דירה / קומה</p><p className="text-xs font-bold">{selectedDonor.apartment || '0'} / {selectedDonor.floor || '0'}</p></div>
                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">סיווגים</p><div className="flex gap-1">{selectedDonor.preferences.map((p: any) => <div key={p} className="w-4 h-4 bg-blue-100 rounded flex items-center justify-center text-blue-600">{p === 'telephonic' ? <Phone size={8}/> : <Home size={8}/>}</div>)}</div></div>
                             </div>
-
-                            {selectedDonor.notes && (
-                                <div className="space-y-2">
-                                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mr-1">הערות כלליות</p>
-                                    <div className="bg-blue-50/30 p-3 rounded-xl border border-blue-100 flex gap-2">
-                                        <ClipboardList size={14} className="text-blue-500 shrink-0" /><p className="text-[11px] font-bold text-blue-900 italic leading-relaxed">"{selectedDonor.notes}"</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="space-y-2">
-                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mr-1">נציגים מטפלים</p>
-                               <div className="flex flex-wrap gap-1.5">
-                                  {getAssignedRepsForDonor(selectedDonor.id, selectedDonor.assignedRepIds).map(r => (
-                                    <div key={r.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5">
-                                       <div className="w-4 h-4 rounded bg-blue-100 flex items-center justify-center text-[9px] font-black text-blue-600">{r.name.charAt(0)}</div>
-                                       <span className="text-[10px] font-bold text-slate-700">{r.name}</span>
-                                    </div>
-                                  ))}
-                               </div>
-                            </div>
+                            {selectedDonor.notes && (<div className="space-y-2"><p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mr-1">הערה כללית</p><div className="bg-blue-50/30 p-3 rounded-xl border border-blue-100 flex gap-2"><ClipboardList size={14} className="text-blue-500 shrink-0" /><p className="text-[11px] font-bold text-blue-900 italic leading-relaxed">"{selectedDonor.notes}"</p></div></div>)}
                             <button onClick={() => setIsEditing(true)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] active:scale-95 shadow-lg flex items-center justify-center gap-2 mt-4 hover:bg-blue-700 transition-all"><Edit2 size={12}/> ערוך את כל פרטי התורם</button>
                           </>
                         )}
@@ -314,45 +299,43 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
         )}
       </div>
 
-      {/* מודאל ייבוא */}
+      {/* מודאל ייבוא (פתיחה בראש הדף) */}
       {showImportModal && (
-        <div className="fixed inset-0 z-[700] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-           <div className="bg-white rounded-[35px] w-full max-w-xl shadow-2xl p-8 border border-slate-100">
+        <div className="fixed inset-0 z-[700] flex items-start justify-center p-4 bg-slate-950/80 backdrop-blur-sm pt-10">
+           <div className="bg-white rounded-[35px] w-full max-w-xl shadow-2xl p-8 border border-slate-100 animate-in zoom-in-95 duration-300">
               <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-xl font-black text-slate-900 italic">ייבוא תורמים <span className="text-emerald-600">EXCEL SMART</span></h2>
-                 <button onClick={() => setShowImportModal(false)} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button>
+                 <h2 className="text-xl font-black text-slate-900 italic">ייבוא תורמים <span className="text-emerald-600">SMART IMPORT</span></h2>
+                 <button onClick={() => setShowImportModal(false)} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-red-500 transition-all"><X size={20}/></button>
               </div>
               <div className="space-y-6 text-right" dir="rtl">
-                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-2">
-                    <p className="text-xs font-black text-blue-700 flex items-center gap-2"><AlertTriangle size={14}/> הוראות ייבוא:</p>
-                    <ul className="text-[11px] font-bold text-blue-900 list-disc list-inside space-y-1">
-                       <li>כל תורם חדש יוגדר אוטומטית כסטטוס <b>"פנוי"</b>.</li>
-                       <li>גוגל מפות יאמת את הכתובות בייבוא (ייתכנו כתובות שלא יזוהו).</li>
+                 <div className="bg-blue-50 p-5 rounded-3xl border border-blue-100 space-y-3">
+                    <p className="text-xs font-black text-blue-700 flex items-center gap-2"><AlertTriangle size={16}/> הנחיות חשובות:</p>
+                    <ul className="text-[11px] font-bold text-blue-900 list-disc list-inside space-y-1.5">
+                       <li>כל תורם חדש שמיובא יוגדר אוטומטית כסטטוס <b>"פנוי"</b>.</li>
+                       <li>גוגל מפות ינסה לאמת כל כתובת (ייתכנו כתובות שלא יזוהו במערכת הניווט).</li>
                        <li>יש להשתמש בשמות העמודות בדיוק כפי שמופיע בקובץ לדוגמה.</li>
                     </ul>
-                    <button onClick={downloadTemplate} className="text-[10px] font-black text-blue-600 underline flex items-center gap-1 mt-2"><Download size={12}/> הורד קובץ אקסל לדוגמה</button>
+                    <button onClick={downloadTemplate} className="text-xs font-black text-blue-600 underline flex items-center gap-1 mt-2 hover:text-blue-800"><Download size={14}/> הורד קובץ תבנית לאקסל</button>
                  </div>
-                 
                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">בחר סיווג לייבוא</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">בחר סיווג לייבוא המסה</label>
                     <div className="grid grid-cols-3 gap-2">
-                       <button onClick={() => setImportClassification('telephonic')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'telephonic' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>📞 טלפוני</button>
-                       <button onClick={() => setImportClassification('purim_day')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'purim_day' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>🎭 פורים</button>
-                       <button onClick={() => setImportClassification('general_visit')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'general_visit' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>🏠 שטח/בית</button>
+                       <button onClick={() => setImportClassification('telephonic')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'telephonic' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-white'}`}>📞 טלפוני</button>
+                       <button onClick={() => setImportClassification('purim_day')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'purim_day' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-white'}`}>🎭 פורים</button>
+                       <button onClick={() => setImportClassification('general_visit')} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === 'general_visit' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-white'}`}>🏠 בית/שטח</button>
                     </div>
                  </div>
-
-                 <div className="relative border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-emerald-400 transition-all group">
+                 <div className="relative border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-emerald-400 transition-all group cursor-pointer bg-slate-50/30">
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} className="absolute inset-0 opacity-0 cursor-pointer" />
                     <Upload size={32} className="mx-auto text-slate-300 group-hover:text-emerald-500 mb-2" />
-                    <p className="text-xs font-black text-slate-500">לחץ להעלאת קובץ אקסל או גרור לכאן</p>
+                    <p className="text-xs font-black text-slate-500">לחץ להעלאת קובץ אקסל מוכן</p>
                  </div>
               </div>
            </div>
         </div>
       )}
 
-      {/* מודאל הוספה ידנית (הקוד המקורי ללא שינוי אות) */}
+      {/* מודאל הוספה ידנית (פתיחה בראש הדף) */}
       {showSingleDonorModal && (
         <div className="fixed inset-0 z-[600] flex items-start justify-center p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto pt-10 lg:pt-20">
            <div className="bg-white rounded-[35px] w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 overflow-hidden relative mb-10">
@@ -417,7 +400,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                     </div>
 
                     <div className="space-y-2">
-                       <div className="flex items-center justify-between"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">קישור לנציג (חיפוש)</label><button type="button" onClick={clearRepAssignments} className="text-[8px] font-black text-red-500 bg-red-50 px-2 py-1 rounded-lg border border-red-100">נקה הכל</button></div>
+                       <div className="flex items-center justify-between"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">קישור לנציג (חיפוש)</label><button type="button" onClick={clearRepAssignments} className="text-[8px] font-black text-red-500 bg-red-50 px-2 py-1 rounded-lg border border-red-100 shadow-sm">נקה הכל</button></div>
                        <div className="relative">
                           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
                           <input type="text" placeholder="חפש נציג לפי שם..." value={repSearchTerm} onChange={e => setRepSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs font-bold outline-none focus:ring-2 ring-blue-100 transition-all shadow-sm" />
@@ -433,10 +416,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
 
                     <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">סיווג תורם</label><div className="grid grid-cols-3 gap-2">{['telephonic', 'general_visit', 'purim_day'].map(p => (<button key={p} type="button" onClick={() => togglePreference(p as any)} className={`py-3 rounded-xl border transition-all font-black text-[9px] ${newDonor.preferences?.includes(p as any) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}>{p === 'telephonic' ? '📞 טלפוני' : p === 'purim_day' ? '🎭 פורים' : '🏠 ביקור בית'}</button>))}</div></div>
 
-                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">הערות כלליות</label><textarea rows={3} value={newDonor.notes} onChange={e => setNewDonor({...newDonor, notes: e.target.value})} placeholder="כתוב הערות חשובות על התורם..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold outline-none focus:bg-white transition-all resize-none" /></div>
+                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">הערות כלליות</label><textarea rows={3} value={newDonor.notes} onChange={e => setNewDonor({...newDonor, notes: e.target.value})} placeholder="כתוב הערות חשובות על התורם..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold outline-none focus:bg-white transition-all resize-none shadow-sm" /></div>
                  </div>
 
-                 <div className="col-span-1 lg:col-span-2 mt-4"><button type="submit" className="w-full py-5 bg-blue-600 text-white font-black text-sm rounded-[20px] shadow-xl shadow-blue-200 active:scale-95 transition-all uppercase tracking-[0.2em] hover:bg-blue-700">שמור תורם במערכת וסנכרן</button></div>
+                 <div className="col-span-1 lg:col-span-2 mt-4"><button type="submit" className="w-full py-5 bg-blue-600 text-white font-black text-sm rounded-[25px] shadow-xl shadow-blue-200 active:scale-95 transition-all uppercase tracking-[0.2em] hover:bg-blue-700">שמור תורם במערכת וסנכרן</button></div>
               </form>
            </div>
         </div>
