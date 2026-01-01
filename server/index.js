@@ -9,6 +9,7 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// הגדרות בסיסיות
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
@@ -51,7 +52,8 @@ app.post('/api/data', async (req, res) => {
 // --- הגשת קבצי האתר (Frontend) ---
 app.use(express.static(path.join(__dirname, '../dist')));
 
-app.get('*', (req, res) => {
+// ✅ התיקון כאן: שימוש ב- (*) במקום רק * כדי למנוע את השגיאה ב-Node v22
+app.get('(*)', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
