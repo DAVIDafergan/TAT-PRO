@@ -12,13 +12,13 @@ const __dirname = path.dirname(__filename);
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
-// חיבור גמיש למסד הנתונים (תומך ב-MONGO_URL מהצילום מסך שלך)
+// חיבור גמיש למסד הנתונים
 const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URL;
 mongoose.connect(mongoURI)
   .then(() => console.log('✅ TAT PRO Database Connected'))
   .catch(err => console.error('❌ Connection Error:', err));
 
-// --- הגדרת המודלים (Schemas) ישירות כאן כדי למנוע נתק ---
+// --- הגדרת המודלים (Schemas) ---
 
 const donorSchema = new mongoose.Schema({ id: String }, { strict: false });
 const donationSchema = new mongoose.Schema({ id: String }, { strict: false });
@@ -31,16 +31,16 @@ const giftSchema = new mongoose.Schema({ id: String }, { strict: false });
 const lotterySchema = new mongoose.Schema({ id: String }, { strict: false });
 const patrolSchema = new mongoose.Schema({ id: String }, { strict: false });
 
-// מודלים חדשים שהיו חסרים ולכן לא נשמרו:
+// מודלים חדשים:
 const pathSchema = new mongoose.Schema({ 
   id: String, 
-  assignedRepIds: [String], // קריטי לסינון נציגים
+  assignedRepIds: [String], 
   addresses: Array 
 }, { strict: false });
 
 const callListSchema = new mongoose.Schema({ 
   id: String, 
-  assignedRepIds: [String], // קריטי לסינון נציגים
+  assignedRepIds: [String], 
   donors: Array 
 }, { strict: false });
 
@@ -55,7 +55,7 @@ const systemMessageSchema = new mongoose.Schema({
   targetIds: [String] 
 }, { strict: false });
 
-// יצירת המודלים ב-Mongoose
+// יצירת המודלים
 const Models = {
   Donor: mongoose.model('Donor', donorSchema),
   Donation: mongoose.model('Donation', donationSchema),
@@ -67,14 +67,13 @@ const Models = {
   Gift: mongoose.model('Gift', giftSchema),
   Lottery: mongoose.model('Lottery', lotterySchema),
   Patrol: mongoose.model('Patrol', patrolSchema),
-  // החדשים:
   Path: mongoose.model('Path', pathSchema),
   CallList: mongoose.model('CallList', callListSchema),
   RepMessage: mongoose.model('RepMessage', repMessageSchema),
   SystemMessage: mongoose.model('SystemMessage', systemMessageSchema)
 };
 
-// פונקציית מיפוי חכמה (פותרת את הבעיה של שמות ארוכים)
+// פונקציית מיפוי
 const getModel = (collection) => {
   switch (collection) {
     case 'donors': return Models.Donor;
@@ -88,10 +87,9 @@ const getModel = (collection) => {
     case 'gifts': return Models.Gift;
     case 'lotteries': return Models.Lottery;
     case 'patrols': return Models.Patrol;
-    // החיבורים החשובים שתוקנו:
     case 'paths': return Models.Path;
     case 'callLists': return Models.CallList;
-    case 'repToAdminMessages': return Models.RepMessage; // תיקון קריטי!
+    case 'repToAdminMessages': return Models.RepMessage;
     case 'systemMessages': return Models.SystemMessage;
     default: return null;
   }
@@ -99,26 +97,22 @@ const getModel = (collection) => {
 
 // --- מנגנון API ---
 
-// קבלת נתונים
 app.get('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const Model = getModel(collection);
     
     if (!Model) {
-      console.error(`Collection not found: ${collection}`);
       return res.status(404).send('Collection not found');
     }
     
     const data = await Model.find();
     res.json(data);
   } catch (err) { 
-    console.error(err);
     res.status(500).json(err); 
   }
 });
 
-// שמירה/עדכון נתונים
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
@@ -126,7 +120,6 @@ app.post('/api/:collection', async (req, res) => {
     
     if (!Model) return res.status(404).send('Collection not found');
 
-    // Upsert: מעדכן אם קיים, יוצר אם לא
     const result = await Model.findOneAndUpdate(
       { id: req.body.id },
       req.body,
@@ -134,12 +127,10 @@ app.post('/api/:collection', async (req, res) => {
     );
     res.json(result);
   } catch (err) { 
-    console.error(err);
     res.status(500).json(err); 
   }
 });
 
-// מחיקת נתונים
 app.delete('/api/:collection/:id', async (req, res) => {
   try {
     const { collection, id } = req.params;
@@ -152,9 +143,11 @@ app.delete('/api/:collection/:id', async (req, res) => {
   } catch (err) { res.status(500).json(err); }
 });
 
-// --- הגשת האתר ---
+// --- הגשת האתר (התיקון כאן) ---
 app.use(express.static(path.join(__dirname, '../dist')));
-app.get('*', (req, res) => {
+
+// התיקון: שימוש ב-RegEx (/.*/) במקום '*' כדי למנוע את שגיאת ה-PathError
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
