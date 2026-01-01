@@ -31,7 +31,6 @@ const giftSchema = new mongoose.Schema({ id: String }, { strict: false });
 const lotterySchema = new mongoose.Schema({ id: String }, { strict: false });
 const patrolSchema = new mongoose.Schema({ id: String }, { strict: false });
 
-// מודלים חדשים:
 const pathSchema = new mongoose.Schema({ 
   id: String, 
   assignedRepIds: [String], 
@@ -95,61 +94,38 @@ const getModel = (collection) => {
   }
 };
 
-// --- מנגנון API ---
-
 app.get('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const Model = getModel(collection);
-    
-    if (!Model) {
-      return res.status(404).send('Collection not found');
-    }
-    
+    if (!Model) return res.status(404).send('Collection not found');
     const data = await Model.find();
     res.json(data);
-  } catch (err) { 
-    res.status(500).json(err); 
-  }
+  } catch (err) { res.status(500).json(err); }
 });
 
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const Model = getModel(collection);
-    
     if (!Model) return res.status(404).send('Collection not found');
-
-    const result = await Model.findOneAndUpdate(
-      { id: req.body.id },
-      req.body,
-      { upsert: true, new: true }
-    );
+    const result = await Model.findOneAndUpdate({ id: req.body.id }, req.body, { upsert: true, new: true });
     res.json(result);
-  } catch (err) { 
-    res.status(500).json(err); 
-  }
+  } catch (err) { res.status(500).json(err); }
 });
 
 app.delete('/api/:collection/:id', async (req, res) => {
   try {
     const { collection, id } = req.params;
     const Model = getModel(collection);
-    
     if (!Model) return res.status(404).send('Collection not found');
-
     await Model.findOneAndDelete({ id: id });
     res.json({ success: true });
   } catch (err) { res.status(500).json(err); }
 });
 
-// --- הגשת האתר ---
 app.use(express.static(path.join(__dirname, '../dist')));
-
-// התיקון: שימוש ב-RegEx (/.*/) במקום '*' כדי למנוע את שגיאת ה-PathError
-app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
+app.get(/.*/, (req, res) => { res.sendFile(path.join(__dirname, '../dist/index.html')); });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 TAT PRO Server Live on ${PORT}`));
