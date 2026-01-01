@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { 
   LayoutDashboard, 
@@ -21,7 +20,8 @@ import {
   Smartphone,
   Building2,
   Code,
-  ShieldCheck
+  ShieldCheck,
+  MapPinned // ייבוא האייקון החדש ליצירת משימות
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 
@@ -42,6 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setPage, onLogout, user, 
     { id: 'campaigns', label: 'ניהול קמפיינים', icon: <Target size={18} /> },
     { id: 'reps', label: 'ניהול נציגים', icon: <Users size={18} /> },
     { id: 'crm', label: 'CRM תורמים', icon: <Database size={18} /> },
+    { id: 'task_creation', label: 'יצירת משימות', icon: <MapPinned size={18} /> }, // הטאב החדש שהוספנו
     { id: 'donations', label: 'ניהול תרומות', icon: <CreditCard size={18} /> },
     { id: 'cash_management', label: 'מרכז אימות', icon: <ShieldCheck size={18} /> },
     { id: 'expenses', label: 'ניהול הוצאות', icon: <Receipt size={18} /> },

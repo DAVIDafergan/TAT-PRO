@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { User, UserRole, Campaign, Representative, Donation, Donor, Path, CallList, AssignmentStatus, SystemMessage, RepToAdminMessage, Lottery, Expense, CampaignGroup, Patrol, RankDefinition, Gift, RepTask, DailyReport, Customer, ClearingSettings } from './types';
@@ -22,6 +21,7 @@ import SettingsPage from './pages/Settings';
 import CustomersPage from './pages/Customers';
 import Registration from './pages/Registration';
 import DevHandoff from './pages/DevHandoff';
+import TaskCreationPage from './pages/TaskCreationPage'; // הוספת הייבוא החדש
 import Sidebar from './components/Sidebar';
 
 const App: React.FC = () => {
@@ -170,6 +170,7 @@ const App: React.FC = () => {
                 currentPage === 'rep_portal' ? <RepPortal rep={allRepresentatives.find(r => r.id === user?.id) || (user as any)} patrols={patrols} allReps={allRepresentatives} donations={allDonations} addDonation={addDonation} paths={allPaths} callLists={allCallLists} updateDonorStatus={(did, s) => setAllDonors(prev => prev.map(d => d.id === did ? {...d, assignmentStatus: s} : d))} systemMessages={systemMessages} sendRepMessage={(c) => {}} donors={allDonors} onLogout={handleLogout} onBackToAdmin={() => setCurrentPage('dashboard')} clearingSettings={clearingSettings} /> :
                 currentPage === 'projection' ? <ProjectionScreen campaign={activeCampaign} representatives={filteredReps} donations={filteredDonations.filter(d => d.status === 'confirmed')} onBack={() => {setCurrentPage('dashboard'); setActiveLotteryForProjection(null);}} activeLottery={activeLotteryForProjection} allLotteries={lotteries} onLotteryComplete={(id, winner) => setLotteries(prev => prev.map(l => l.id === id ? {...l, winnerName: winner, status: 'completed'} : l))} groups={campaignGroups} /> :
                 currentPage === 'crm' ? <CRMPage donors={allDonors} setDonors={setAllDonors} activeCampaignId={activeCampaignId} reps={filteredReps} paths={allPaths} callLists={allCallLists} /> :
+                currentPage === 'task_creation' ? <TaskCreationPage donors={allDonors} setDonors={setAllDonors} reps={filteredReps} patrols={patrols} setPaths={setAllPaths} setCallLists={setAllCallLists} activeCampaignId={activeCampaignId} /> :
                 currentPage === 'rewards' ? <RewardsManager lotteries={lotteries} setLotteries={setLotteries} ranks={ranks} setRanks={setRanks} gifts={gifts} setGifts={setGifts} onTriggerDraw={triggerLottery} representatives={filteredReps} donations={filteredDonations} /> :
                 currentPage === 'settings' ? <SettingsPage setCurrentPage={setCurrentPage} user={user} clearingSettings={clearingSettings} setClearingSettings={setClearingSettings} /> :
                 currentPage === 'war_room' ? <WarRoom representatives={filteredReps} donors={allDonors} donations={filteredDonations} paths={allPaths} /> :
