@@ -52,8 +52,9 @@ app.post('/api/data', async (req, res) => {
 // --- הגשת קבצי האתר (Frontend) ---
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// ✅ התיקון כאן: שימוש ב- (*) במקום רק * כדי למנוע את השגיאה ב-Node v22
-app.get('/:path*', (req, res) => {
+// ✅ התיקון הסופי והמחייב עבור Node v22:
+// הגדרת פרמטר בשם 'any' כדי ש-path-to-regexp לא יזרוק שגיאה
+app.get('/:any*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
