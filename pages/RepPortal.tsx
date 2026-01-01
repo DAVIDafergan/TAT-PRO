@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { Representative, Donation, Path, CallList, Donor, AssignmentStatus, Patrol, SystemMessage, UserRole, PaymentMethod, ClearingSettings } from '../types';
 import { mockRanks } from '../services/mockData';
-import { db } from '../services/db'; // חיבור למסד הנתונים
+import { db } from '../services/db'; 
 import { 
   Home, PlusCircle, Clock, MapPin, 
   X, Smartphone, Wallet, CreditCard, Check, 
   Phone, TrendingUp, Banknote, Sun, Moon, 
   LogOut, MapPinned, PhoneCall, MessageCircle, 
   Navigation2, Share2, Award, Gem, Sprout, Trophy, ChevronLeft,
-  FileText, Landmark, Info, Bell, Send, User, MessageSquare
+  FileText, Landmark, Info, Bell, Send, User, MessageSquare, ClipboardEdit
 } from 'lucide-react';
 
 interface RepPortalProps {
@@ -30,7 +30,7 @@ interface RepPortalProps {
 }
 
 const RepPortal: React.FC<RepPortalProps> = ({ 
-  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings, systemMessages, sendRepMessage
+  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings, systemMessages, sendRepMessage, donors
 }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [showAddDonation, setShowAddDonation] = useState(false);
@@ -38,11 +38,9 @@ const RepPortal: React.FC<RepPortalProps> = ({
   const [activeDonorForReporting, setActiveDonorForReporting] = useState<Donor | null>(null);
   const [reportingStep, setReportingStep] = useState<'initial' | 'amount' | 'details' | 'success'>('initial');
   
-  // State להודעות והתראות
   const [showMessagesModal, setShowMessagesModal] = useState(false);
   const [repMessageToAdmin, setRepMessageToAdmin] = useState('');
 
-  // State לשיתוף
   const [shareText, setShareText] = useState('היי, אני לוקח חלק בקמפיין החשוב הזה! אשמח שתעזור לי להגיע ליעד שלי דרך הלינק האישי:');
   const [phoneNumbers, setPhoneNumbers] = useState('');
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -57,11 +55,10 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   const isDark = theme === 'dark';
 
-  // סנכרון משימות מהמסד
   const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
   const myCallList = useMemo(() => (callLists || []).find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
   
-  // סינון הודעות רלוונטיות לנציג
+  // סנכרון דו-כיווני: קבלת הודעות מהמנהל
   const myMessages = useMemo(() => (systemMessages || []).filter(m => 
     m.targetType === 'all' || 
     (m.targetType === 'specific' && m.targetIds?.includes(rep.id)) ||
@@ -92,17 +89,18 @@ const RepPortal: React.FC<RepPortalProps> = ({
     setShowAddDonation(true);
   };
 
-  const finalizeReporting = (status: string) => {
+  const finalizeReporting = async (status: string) => {
     if (status === 'donated') {
        let finalStatus: Donation['status'] = 'pending_verification';
        if (paymentMethod === 'cash') finalStatus = 'pending_cash';
        if (paymentMethod === 'online' || paymentMethod === 'credit') finalStatus = 'confirmed'; 
 
+       const donationAmount = Number(amount) || 0;
        const donationData: Donation = {
         id: Math.random().toString(36).substr(2, 9),
         donorName: donorName || 'תורם כללי',
         donorPhone: donorPhone,
-        amount: Number(amount) || 0,
+        amount: donationAmount,
         representativeId: rep.id,
         representativeName: rep.name,
         timestamp: new Date().toISOString(),
@@ -115,22 +113,35 @@ const RepPortal: React.FC<RepPortalProps> = ({
       };
 
       addDonation(donationData);
-      
-      // סנכרון ל-Database
       db.addDonation(donationData);
       
+      // עדכון ה-CRM: הוספת סכום התרומה לפרטי התורם ושינוי סטטוס
       if (activeDonorForReporting) {
+        const updatedDonor = { 
+          ...activeDonorForReporting, 
+          treatmentStatus: 'donated' as any,
+          totalDonations: (activeDonorForReporting.totalDonations || 0) + donationAmount 
+        };
         updateDonorStatus(activeDonorForReporting.id, 'donated');
-        db.saveDonor({ ...activeDonorForReporting, treatmentStatus: 'donated' });
+        await db.saveDonor(updatedDonor);
       }
 
       setReportingStep('success');
     } else {
+      // עדכון סטטוסים לפי דיווח (לא היה בבית / לחזור אליו)
       if (activeDonorForReporting) {
-        const mapping: Record<string, AssignmentStatus> = { refused: 'not_donated', not_home: 'call_back', come_later: 'call_back' };
+        const mapping: Record<string, AssignmentStatus> = { 
+            refused: 'not_donated', 
+            not_home: 'call_back', 
+            come_later: 'call_back' 
+        };
         const newStatus = mapping[status] || 'available';
+        
         updateDonorStatus(activeDonorForReporting.id, newStatus);
-        db.saveDonor({ ...activeDonorForReporting, treatmentStatus: status as any });
+        await db.saveDonor({ 
+            ...activeDonorForReporting, 
+            treatmentStatus: (status === 'refused' ? 'not_donated' : status) as any 
+        });
       }
       setShowAddDonation(false);
     }
@@ -140,9 +151,8 @@ const RepPortal: React.FC<RepPortalProps> = ({
     if (!repMessageToAdmin.trim()) return;
     sendRepMessage(repMessageToAdmin);
     
-    // סנכרון לשרת
     const msgId = Math.random().toString(36).substr(2, 9);
-    (db as any).saveToApi?.('repToAdminMessages', {
+    db.saveRepToAdminMessage({
       id: msgId,
       repId: rep.id,
       repName: rep.name,
@@ -298,14 +308,20 @@ const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="space-y-4">
                   {(myCallList?.donors || []).map(donor => (
                       <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
-                          <div onClick={() => handleReportVisit(donor)} className="w-14 h-14 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-[22px] flex items-center justify-center shrink-0 group-hover:bg-orange-600 group-hover:text-white transition-all cursor-pointer"><Phone size={24}/></div>
+                          <div onClick={() => handleReportVisit(donor)} className="w-14 h-14 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-[22px] flex items-center justify-center shrink-0 group-hover:bg-orange-600 group-hover:text-white transition-all cursor-pointer">
+                            <ClipboardEdit size={24}/>
+                          </div>
                           <div className="flex-1 min-w-0 text-right" onClick={() => handleReportVisit(donor)}>
                               <h4 className="text-sm font-black truncate">{donor.firstName} {donor.lastName}</h4>
                               <p className="text-[10px] text-slate-400 font-bold tabular-nums mt-0.5">{donor.phone}</p>
                           </div>
                           <div className="flex gap-2 shrink-0">
-                              <a href={`tel:${donor.phone}`} className="p-3.5 bg-orange-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all"><Phone size={20}/></a>
-                              <a href={`https://wa.me/972${donor.phone?.substring(1)}`} target="_blank" className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all"><MessageCircle size={20}/></a>
+                              <a href={`tel:${donor.phone}`} className="p-3.5 bg-orange-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
+                                <Phone size={20}/>
+                              </a>
+                              <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
+                                <PlusCircle size={20}/>
+                              </button>
                           </div>
                       </div>
                   ))}
@@ -348,8 +364,8 @@ const RepPortal: React.FC<RepPortalProps> = ({
                          <h4 className="text-[14px] font-black truncate">{donor.firstName} {donor.lastName}</h4>
                          <p className="text-[10px] text-slate-400 font-bold truncate flex items-center gap-1 mt-0.5 justify-end"><MapPin size={10}/> {(donor.street || '')} {(donor.building || '')}</p>
                       </div>
-                      <button onClick={() => window.open(`https://waze.com/ul?q=${encodeURIComponent((donor.street || '') + ' ' + (donor.building || '') + ' ' + (donor.city || ''))}&navigate=yes`)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
-                        <Navigation2 size={20}/>
+                      <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
+                        <PlusCircle size={24}/>
                       </button>
                    </div>
                 ))}
@@ -393,7 +409,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
         )}
       </main>
 
-      {/* הודעות והתראות Modal */}
+      {/* הודעות והתראות Modal - סנכרון דו כיווני */}
       {showMessagesModal && (
         <div className="fixed inset-0 z-[1000] backdrop-blur-3xl bg-slate-900/80 flex items-center justify-center p-4">
            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[40px] p-6 shadow-2xl animate-fade-in flex flex-col max-h-[80vh]">
@@ -456,7 +472,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
       {showAddDonation && (
         <div className="fixed inset-0 z-[1000] backdrop-blur-3xl bg-slate-900/80 flex items-center justify-center p-4 overflow-y-auto pt-20 pb-20">
-           <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-fade-in relative flex flex-col overflow-hidden my-auto">
+           <div className="bg-white dark:bg-slate-900 w-full max-sm rounded-[40px] p-8 shadow-2xl animate-fade-in relative flex flex-col overflow-hidden my-auto">
               <div className="flex items-center justify-between mb-8 shrink-0">
                  <h2 className="text-xl font-black text-right w-full">דיווח פעילות</h2>
                  <button onClick={() => setShowAddDonation(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400"><X size={18}/></button>
@@ -466,8 +482,9 @@ const RepPortal: React.FC<RepPortalProps> = ({
                   {reportingStep === 'initial' && (
                     <div className="space-y-4 animate-fade-in">
                        <button onClick={() => setReportingStep('amount')} className="w-full py-6 bg-emerald-600 text-white rounded-3xl font-black flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl shadow-emerald-500/20"><Banknote size={24}/> התקבלה תרומה</button>
+                       <button onClick={() => finalizeReporting('refused')} className="w-full py-5 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-3xl font-black flex items-center justify-center gap-3 active:scale-95 border border-red-100"><X size={24}/> לא תרם</button>
                        <button onClick={() => finalizeReporting('not_home')} className="w-full py-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-3xl font-black flex items-center justify-center gap-3 active:scale-95"><Clock size={24}/> לא היה בבית</button>
-                       <button onClick={() => finalizeReporting('come_later')} className="w-full py-5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-3xl font-black flex items-center justify-center gap-3 border border-amber-100 dark:border-amber-900/50 active:scale-95"><Clock size={24}/> לחזור מאוחר יותר</button>
+                       <button onClick={() => finalizeReporting('come_later')} className="w-full py-5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-3xl font-black flex items-center justify-center gap-3 border border-amber-100 dark:border-amber-900/50 active:scale-95"><Phone size={24}/> לחזור אליו (שיחה)</button>
                     </div>
                   )}
 

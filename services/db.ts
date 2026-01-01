@@ -3,7 +3,6 @@ import { mockCampaigns, mockRepresentatives, mockDonors, mockDonations, mockRank
 
 const DB_KEY = 'tat_pro_db_v1';
 const SYNC_CHANNEL = 'tat_pro_sync_channel';
-// כתובת ה-API הבסיסית (השרת שבנינו יודע לנתב לפי שם הקולקשן)
 const API_BASE = '/api';
 
 const syncChannel = new BroadcastChannel(SYNC_CHANNEL);
@@ -37,7 +36,6 @@ const initialClearingSettings: ClearingSettings = {
   paybox: { mode: 'manual', manualPhones: ['0547778899'] }
 };
 
-// פונקציית עזר לקריאות API מסודרות
 const fetchFromApi = async (collection: string) => {
   try {
     const res = await fetch(`${API_BASE}/${collection}`);
@@ -61,7 +59,6 @@ const saveToApi = async (collection: string, data: any) => {
 
 export const db = {
   loadAll: async (): Promise<DBStore> => {
-    // 1. ניסיון טעינה מסודרת מה-MongoDB (כל טבלה בנפרד)
     try {
       const [
         donors, donations, campaigns, users, paths, patrols, groups, expenses, customers, ranks, gifts, lotteries, messages, callLists, repToAdminMessages
@@ -79,11 +76,10 @@ export const db = {
         fetchFromApi('gifts'),
         fetchFromApi('lotteries'),
         fetchFromApi('systemMessages'),
-        fetchFromApi('callLists'), // הוספת רשימות שיחות לטעינה מהשרת
-        fetchFromApi('repToAdminMessages') // הוספת הודעות נציגים לטעינה מהשרת
+        fetchFromApi('callLists'),
+        fetchFromApi('repToAdminMessages')
       ]);
 
-      // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
       if (donors && donors.length > 0) {
         return {
           donors,
@@ -103,7 +99,7 @@ export const db = {
           repToAdminMessages: repToAdminMessages || [],
           repTasks: [],
           dailyReports: [],
-          callLists: callLists || [], // החלפת המוק בנתונים האמיתיים מהשרת
+          callLists: callLists || [],
           clearingSettings: initialClearingSettings
         };
       }
@@ -111,7 +107,6 @@ export const db = {
       console.warn("Cloud DB partially reachable, falling back to local");
     }
 
-    // 2. לוגיקת LocalStorage המקורית כגיבוי (Fallback)
     const localData = localStorage.getItem(DB_KEY);
     if (!localData) {
       const initialStore: DBStore = {
@@ -148,14 +143,10 @@ export const db = {
     return JSON.parse(localData);
   },
 
-  // שמירה "מסודרת" - כל חלק נשמר לטבלה שלו ב-MongoDB
   saveAll: async (store: DBStore) => {
-    // שמירה מקומית (ללא שינוי)
     localStorage.setItem(DB_KEY, JSON.stringify(store));
     syncChannel.postMessage('db_updated');
 
-    // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
-    // השרת שבנינו יודע לנתב את הבקשות ל-Collections הנכונים לפי שם הנתיב
     const syncTasks = [
       ...store.donors.map(d => saveToApi('donors', d)),
       ...store.donations.map(d => saveToApi('donations', d)),
@@ -165,12 +156,12 @@ export const db = {
       ...store.groups.map(g => saveToApi('groups', g)),
       ...store.patrols.map(p => saveToApi('patrols', p)),
       ...store.paths.map(p => saveToApi('paths', p)),
-      ...store.callLists.map(cl => saveToApi('callLists', cl)), // שמירת שיחות
+      ...store.callLists.map(cl => saveToApi('callLists', cl)),
       ...store.ranks.map(r => saveToApi('ranks', r)),
       ...store.gifts.map(g => saveToApi('gifts', g)),
       ...store.lotteries.map(l => saveToApi('lotteries', l)),
       ...store.systemMessages.map(m => saveToApi('systemMessages', m)),
-      ...store.repToAdminMessages.map(rm => saveToApi('repToAdminMessages', rm)), // שמירת הודעות נציגים
+      ...store.repToAdminMessages.map(rm => saveToApi('repToAdminMessages', rm)),
       ...store.expenses.map(e => saveToApi('expenses', e)),
       ...store.customers.map(c => saveToApi('customers', c))
     ];
@@ -182,8 +173,19 @@ export const db = {
     }
   },
 
-  // פונקציות עזר לשמירה של פריט בודד (לביצועים טובים יותר)
-  saveDonor: (donor: Donor) => saveToApi('donors', donor),
+  // עדכון תורם ב-CRM (סנכרון מיידי)
+  saveDonor: async (donor: Donor) => {
+    // עדכון מקומי מהיר
+    const local = localStorage.getItem(DB_KEY);
+    if (local) {
+      const store = JSON.parse(local) as DBStore;
+      store.donors = store.donors.map(d => d.id === donor.id ? donor : d);
+      localStorage.setItem(DB_KEY, JSON.stringify(store));
+      syncChannel.postMessage('db_updated');
+    }
+    return saveToApi('donors', donor);
+  },
+
   addDonation: (donation: Donation) => saveToApi('donations', donation),
   saveUser: (user: User) => saveToApi('users', user),
   saveCampaign: (campaign: Campaign) => saveToApi('campaigns', campaign),

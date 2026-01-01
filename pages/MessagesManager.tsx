@@ -59,7 +59,7 @@ const MessagesManager: React.FC<MessagesManagerProps> = ({ reps, sendSystemMessa
     const msg = incomingMessages.find(m => m.id === msgId);
     if (!msg) return;
 
-    // 1. שליחת הודעת מערכת (System Message) לנציג
+    // 1. שליחת הודעת מערכת (System Message) לנציג - סנכרון דו-כיווני
     sendSystemMessage({
       title: `תגובה מהמנהלת: ${msg.content.substring(0, 15)}...`,
       content: replyText,

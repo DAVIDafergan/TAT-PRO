@@ -143,7 +143,7 @@ app.delete('/api/:collection/:id', async (req, res) => {
   } catch (err) { res.status(500).json(err); }
 });
 
-// --- הגשת האתר (התיקון כאן) ---
+// --- הגשת האתר ---
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // התיקון: שימוש ב-RegEx (/.*/) במקום '*' כדי למנוע את שגיאת ה-PathError
