@@ -64,7 +64,7 @@ export const db = {
     // 1. ניסיון טעינה מסודרת מה-MongoDB (כל טבלה בנפרד)
     try {
       const [
-        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers
+        donors, donations, campaigns, users, paths, patrols, groups, expenses, customers, ranks, gifts, lotteries, messages
       ] = await Promise.all([
         fetchFromApi('donors'),
         fetchFromApi('donations'),
@@ -74,7 +74,11 @@ export const db = {
         fetchFromApi('patrols'),
         fetchFromApi('groups'),
         fetchFromApi('expenses'),
-        fetchFromApi('customers')
+        fetchFromApi('customers'),
+        fetchFromApi('ranks'),
+        fetchFromApi('gifts'),
+        fetchFromApi('lotteries'),
+        fetchFromApi('systemMessages')
       ]);
 
       // אם הצלחנו למשוך נתונים (לפחות תורמים), נחזיר את הנתונים מהענן
@@ -83,21 +87,21 @@ export const db = {
           donors,
           donations: donations || [],
           campaigns: campaigns || [],
-          representatives: (users || []).filter((u: any) => u.role === 'REPRESENTATIVE'),
-          managers: (users || []).filter((u: any) => u.role !== 'REPRESENTATIVE'),
+          representatives: (users || []).filter((u: any) => u.role === UserRole.REPRESENTATIVE),
+          managers: (users || []).filter((u: any) => u.role !== UserRole.REPRESENTATIVE),
           paths: paths || [],
           patrols: patrols || [],
           groups: groups || [],
           expenses: expenses || [],
           customers: customers || [],
-          // שאר השדות יישארו מה-Mocks או מ-LocalStorage אם אין בענן
-          ranks: mockRanks,
-          gifts: mockGifts,
-          lotteries: mockLotteries,
+          ranks: ranks || mockRanks,
+          gifts: gifts || mockGifts,
+          lotteries: lotteries || mockLotteries,
+          systemMessages: messages || mockSystemMessages,
           repToAdminMessages: [],
           repTasks: [],
           dailyReports: [],
-          systemMessages: mockSystemMessages,
+          callLists: mockCallLists,
           clearingSettings: initialClearingSettings
         };
       }
@@ -136,6 +140,7 @@ export const db = {
         systemMessages: mockSystemMessages,
         clearingSettings: initialClearingSettings
       };
+      db.saveAll(initialStore);
       return initialStore;
     }
     return JSON.parse(localData);
@@ -148,22 +153,42 @@ export const db = {
     syncChannel.postMessage('db_updated');
 
     // שמירה לענן בצורה מאורגנת (כל קולקשן בנפרד)
-    // השרת שבנינו יודע לקחת את ה-id ולבצע update או create
-    await Promise.all([
+    // השרת שבנינו יודע לנתב את הבקשות ל-Collections הנכונים לפי שם הנתיב
+    const syncTasks = [
       ...store.donors.map(d => saveToApi('donors', d)),
       ...store.donations.map(d => saveToApi('donations', d)),
       ...store.campaigns.map(c => saveToApi('campaigns', c)),
       ...store.representatives.map(r => saveToApi('users', r)),
       ...store.managers.map(m => saveToApi('users', m)),
+      ...store.groups.map(g => saveToApi('groups', g)),
+      ...store.patrols.map(p => saveToApi('patrols', p)),
       ...store.paths.map(p => saveToApi('paths', p)),
-      ...store.expenses.map(e => saveToApi('expenses', e))
-    ]);
+      ...store.ranks.map(r => saveToApi('ranks', r)),
+      ...store.gifts.map(g => saveToApi('gifts', g)),
+      ...store.lotteries.map(l => saveToApi('lotteries', l)),
+      ...store.systemMessages.map(m => saveToApi('systemMessages', m)),
+      ...store.expenses.map(e => saveToApi('expenses', e)),
+      ...store.customers.map(c => saveToApi('customers', c))
+    ];
+    
+    try {
+      await Promise.all(syncTasks);
+    } catch (e) {
+      console.error("Failed to sync all data to MongoDB");
+    }
   },
 
   // פונקציות עזר לשמירה של פריט בודד (לביצועים טובים יותר)
   saveDonor: (donor: Donor) => saveToApi('donors', donor),
   addDonation: (donation: Donation) => saveToApi('donations', donation),
   saveUser: (user: User) => saveToApi('users', user),
+  saveCampaign: (campaign: Campaign) => saveToApi('campaigns', campaign),
+  saveGroup: (group: CampaignGroup) => saveToApi('groups', group),
+  savePatrol: (patrol: Patrol) => saveToApi('patrols', patrol),
+  saveRank: (rank: RankDefinition) => saveToApi('ranks', rank),
+  saveGift: (gift: Gift) => saveToApi('gifts', gift),
+  saveLottery: (lottery: Lottery) => saveToApi('lotteries', lottery),
+  saveExpense: (expense: Expense) => saveToApi('expenses', expense),
 
   onSync: (callback: () => void) => {
     syncChannel.onmessage = (event) => {
