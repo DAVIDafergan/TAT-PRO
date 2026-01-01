@@ -1,9 +1,14 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
@@ -12,7 +17,6 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB via Railway'))
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// הגדרת הסכימה
 const AppStateSchema = new mongoose.Schema({
   id: { type: String, default: 'main_db' },
   content: Object,
@@ -21,7 +25,7 @@ const AppStateSchema = new mongoose.Schema({
 
 const AppState = mongoose.model('AppState', AppStateSchema);
 
-// נתיב לקבלת נתונים
+// נתיבי API
 app.get('/api/data', async (req, res) => {
   try {
     const state = await AppState.findOne({ id: 'main_db' });
@@ -31,7 +35,6 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
-// נתיב לשמירת נתונים
 app.post('/api/data', async (req, res) => {
   try {
     await AppState.findOneAndUpdate(
@@ -43,6 +46,13 @@ app.post('/api/data', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Save failed' });
   }
+});
+
+// --- הגשת קבצי האתר (Frontend) ---
+app.use(express.static(path.join(__dirname, '../dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
