@@ -144,7 +144,7 @@ const App: React.FC = () => {
   const showSidebar = user && user.role !== UserRole.REPRESENTATIVE && currentPage !== 'projection' && currentPage !== 'rep_portal' && currentPage !== 'registration' && currentPage !== 'dev_handoff';
 
   return (
-    <APIProvider apiKey="AIzaSyBqQrlwQ1ypTJhZidjTmLzL1t6Dv0phR4I" libraries={['places', 'routes', 'geometry', 'marker']}>
+    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY} libraries={['places', 'routes', 'geometry', 'marker']}>
       <div className="flex min-h-screen bg-[#F9FAFB] overflow-x-hidden font-sans relative">
         {showSidebar && (
           <Sidebar activePage={currentPage} setPage={setCurrentPage} onLogout={handleLogout} user={user!} isSyncing={isSyncing} />
