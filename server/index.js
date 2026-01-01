@@ -31,6 +31,7 @@ const giftSchema = new mongoose.Schema({ id: String }, { strict: false });
 const lotterySchema = new mongoose.Schema({ id: String }, { strict: false });
 const patrolSchema = new mongoose.Schema({ id: String }, { strict: false });
 
+// מודלים חדשים:
 const pathSchema = new mongoose.Schema({ 
   id: String, 
   assignedRepIds: [String], 
@@ -54,11 +55,12 @@ const systemMessageSchema = new mongoose.Schema({
   targetIds: [String] 
 }, { strict: false });
 
-// יצירת המודלים
+// יצירת המודלים - הוספת Campaign לרשימה
 const Models = {
   Donor: mongoose.model('Donor', donorSchema),
   Donation: mongoose.model('Donation', donationSchema),
   User: mongoose.model('User', userSchema),
+  Campaign: mongoose.model('Campaign', new mongoose.Schema({ id: String }, { strict: false })), // תיקון: הוספת מודל קמפיין
   Group: mongoose.model('Group', groupSchema),
   Expense: mongoose.model('Expense', expenseSchema),
   Customer: mongoose.model('Customer', customerSchema),
@@ -77,7 +79,7 @@ const getModel = (collection) => {
   switch (collection) {
     case 'donors': return Models.Donor;
     case 'donations': return Models.Donation;
-    case 'campaigns': return Models.Campaign || mongoose.model('Campaign', new mongoose.Schema({ id: String }, { strict: false }));
+    case 'campaigns': return Models.Campaign; // תיקון: מיפוי ישיר למודל הקמפיין
     case 'users': return Models.User;
     case 'groups': return Models.Group;
     case 'expenses': return Models.Expense;
@@ -94,38 +96,60 @@ const getModel = (collection) => {
   }
 };
 
+// --- מנגנון API ---
+
 app.get('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const Model = getModel(collection);
-    if (!Model) return res.status(404).send('Collection not found');
+    
+    if (!Model) {
+      return res.status(404).send('Collection not found');
+    }
+    
     const data = await Model.find();
     res.json(data);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    res.status(500).json(err); 
+  }
 });
 
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const Model = getModel(collection);
+    
     if (!Model) return res.status(404).send('Collection not found');
-    const result = await Model.findOneAndUpdate({ id: req.body.id }, req.body, { upsert: true, new: true });
+
+    const result = await Model.findOneAndUpdate(
+      { id: req.body.id },
+      req.body,
+      { upsert: true, new: true }
+    );
     res.json(result);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    res.status(500).json(err); 
+  }
 });
 
 app.delete('/api/:collection/:id', async (req, res) => {
   try {
     const { collection, id } = req.params;
     const Model = getModel(collection);
+    
     if (!Model) return res.status(404).send('Collection not found');
+
     await Model.findOneAndDelete({ id: id });
     res.json({ success: true });
   } catch (err) { res.status(500).json(err); }
 });
 
+// --- הגשת האתר ---
 app.use(express.static(path.join(__dirname, '../dist')));
-app.get(/.*/, (req, res) => { res.sendFile(path.join(__dirname, '../dist/index.html')); });
+
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 TAT PRO Server Live on ${PORT}`));

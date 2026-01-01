@@ -80,9 +80,10 @@ export const db = {
         fetchFromApi('repToAdminMessages')
       ]);
 
-      if (donors && donors.length > 0) {
+      // תיקון: בדיקה אם השרת ענה (גם אם הרשימות ריקות) כדי למנוע חזרה אוטומטית לנתוני המוק
+      if (donors !== null || campaigns !== null || users !== null) {
         return {
-          donors,
+          donors: donors || [],
           donations: donations || [],
           campaigns: campaigns || [],
           representatives: (users || []).filter((u: any) => u.role === UserRole.REPRESENTATIVE),
@@ -173,9 +174,7 @@ export const db = {
     }
   },
 
-  // עדכון תורם ב-CRM (סנכרון מיידי)
   saveDonor: async (donor: Donor) => {
-    // עדכון מקומי מהיר
     const local = localStorage.getItem(DB_KEY);
     if (local) {
       const store = JSON.parse(local) as DBStore;
