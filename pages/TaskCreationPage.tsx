@@ -8,6 +8,7 @@ import {
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useMapsLibrary, Map, useMap } from '@vis.gl/react-google-maps';
+import { db } from '../services/db'; // חיבור למסד הנתונים
 
 interface TaskCreationPageProps {
   donors: Donor[];
@@ -144,6 +145,45 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
     pdf.save(`Mission_Plan_${activeTab}_${new Date().getTime()}.pdf`);
   };
 
+  // פונקציית שליחה אמיתית לנציגים
+  const handleSendToReps = async () => {
+    const taskId = Math.random().toString(36).substr(2, 9);
+    
+    if (activeTab === 'paths' || activeTab === 'patrols') {
+      const newPath: Path = {
+        id: taskId,
+        name: activeTab === 'patrols' ? (patrolForm.neighborhood || 'סיירת שטח') : pathForm.name,
+        city: activeTab === 'patrols' ? patrolForm.city : pathForm.city,
+        transport: activeTab === 'patrols' ? patrolForm.transport : pathForm.transport,
+        assignedRepIds: activeTab === 'patrols' ? (patrols.find(p => p.id === patrolForm.selectedPatrolId)?.repIds || []) : pathForm.selectedRepIds,
+        addresses: activeTaskDonors,
+        campaignId: activeCampaignId
+      };
+      
+      // שמירה בשרת ובמצב המקומי
+      await (db as any).savePath?.(newPath) || await db.saveAll?.({ ...await db.loadAll(), paths: [...(await db.loadAll()).paths, newPath] } as any);
+      setPaths(prev => [...prev, newPath]);
+    } else if (activeTab === 'calls') {
+      const newCallList: CallList = {
+        id: taskId,
+        name: callForm.name || 'רשימת שיחות',
+        assignedRepIds: callForm.selectedRepIds,
+        donors: activeTaskDonors,
+        campaignId: activeCampaignId
+      };
+      
+      setCallLists(prev => [...prev, newCallList]);
+    }
+
+    // עדכון סטטוס התורמים ב-Database ל-"בטיפול"
+    for (const donor of activeTaskDonors) {
+       await db.saveDonor({ ...donor, assignmentStatus: 'in_treatment' });
+    }
+
+    alert('המשימה נשלחה בהצלחה! הנציגים יראו אותה כעת בפורטל האישי.');
+    setShowPreview(false);
+  };
+
   const finalizeTask = () => {
     const donorIds = selectedCustomDonors.length > 0 ? selectedCustomDonors : purimDonors.slice(0, 15).map(d => d.id);
     if (donorIds.length === 0) { alert("לא נבחרו תורמים"); return; }
@@ -251,7 +291,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                 </div>
                 <div className="flex gap-2">
                   <button onClick={exportToPDF} className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-500 hover:text-red-600 transition-all"><Printer size={18}/></button>
-                  <button onClick={() => alert('המשימה נשלחה לנציגים!')} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black shadow-lg hover:bg-blue-700 transition-all active:scale-95">שלח לנציגים</button>
+                  <button onClick={handleSendToReps} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black shadow-lg hover:bg-blue-700 transition-all active:scale-95">שלח לנציגים</button>
                 </div>
               </div>
 
@@ -298,9 +338,9 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                          <Clock size={12}/> {routeLegs[idx].duration.text} ({routeLegs[idx].distance.text})
                                       </div>
                                       <div className="space-y-2 pr-2 border-r-2 border-slate-50">
-                                         {routeLegs[idx].steps.map((step: any, sIdx: number) => (
+                                          {routeLegs[idx].steps.map((step: any, sIdx: number) => (
                                            <div key={sIdx} className="text-[9px] text-slate-500 font-medium leading-relaxed bg-slate-50/50 p-2 rounded-lg" dangerouslySetInnerHTML={{ __html: step.instructions }} />
-                                         ))}
+                                          ))}
                                       </div>
                                    </div>
                                  )}
@@ -332,8 +372,8 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
             <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-hide">
               {purimDonors.map(donor => (
                 <button key={donor.id} onClick={() => toggleSelection(donor.id, selectedCustomDonors, setSelectedCustomDonors)} className={`p-5 rounded-[25px] border-2 transition-all text-right flex items-center justify-between group ${selectedCustomDonors.includes(donor.id) ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-[1.02]' : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200 hover:bg-blue-50/20'}`}>
-                   <div className="min-w-0"><p className={`text-[13px] font-black truncate ${selectedCustomDonors.includes(donor.id) ? 'text-white' : 'text-slate-900'}`}>{donor.firstName} {donor.lastName}</p></div>
-                   {selectedCustomDonors.includes(donor.id) ? <Check size={18} /> : <Plus size={14} className="opacity-30" />}
+                    <div className="min-w-0"><p className={`text-[13px] font-black truncate ${selectedCustomDonors.includes(donor.id) ? 'text-white' : 'text-slate-900'}`}>{donor.firstName} {donor.lastName}</p></div>
+                    {selectedCustomDonors.includes(donor.id) ? <Check size={18} /> : <Plus size={14} className="opacity-30" />}
                 </button>
               ))}
             </div>
