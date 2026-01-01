@@ -26,7 +26,7 @@ const AppStateSchema = new mongoose.Schema({
 
 const AppState = mongoose.model('AppState', AppStateSchema);
 
-// נתיבי API
+// נתיבי API (הם חייבים להופיע לפני ה-Catch-all)
 app.get('/api/data', async (req, res) => {
   try {
     const state = await AppState.findOne({ id: 'main_db' });
@@ -52,11 +52,11 @@ app.post('/api/data', async (req, res) => {
 // --- הגשת קבצי האתר (Frontend) ---
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// ✅ התיקון הסופי והמחייב עבור Node v22:
-// הגדרת פרמטר בשם 'any' כדי ש-path-to-regexp לא יזרוק שגיאה
-app.get('/:any*', (req, res) => {
+// ✅ התיקון הסופי: שימוש ב-Regex (ביטוי רגולרי) כדי לעקוף את השגיאה
+// המבנה /.*/ אומר ל-Express לתפוס הכל בלי להשתמש בספרייה הבעייתית
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
