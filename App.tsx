@@ -62,32 +62,35 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const isLoaded = useRef(false);
 
-  const refreshFromDB = useCallback(() => {
+  // עדכון הפונקציה לתמיכה בטעינה אסינכרונית מ-MongoDB
+  const refreshFromDB = useCallback(async () => {
     setIsSyncing(true);
-    const data = db.loadAll();
+    const data = await db.loadAll(); // הוספת await לתמיכה במסד הנתונים
     
-    setCampaigns(data.campaigns || mockCampaigns);
-    if (!activeCampaignId && data.campaigns?.length > 0) setActiveCampaignId(data.campaigns[0].id);
-    else if (!activeCampaignId) setActiveCampaignId('1');
+    if (data) {
+      setCampaigns(data.campaigns || mockCampaigns);
+      if (!activeCampaignId && data.campaigns?.length > 0) setActiveCampaignId(data.campaigns[0].id);
+      else if (!activeCampaignId) setActiveCampaignId('1');
 
-    setAllRepresentatives(data.representatives || mockRepresentatives);
-    setAllDonors(data.donors || mockDonors);
-    setAllDonations(data.donations || []);
-    setAllExpenses(data.expenses || []);
-    setAllPaths(data.paths || mockPaths);
-    setAllCallLists(data.callLists || mockCallLists);
-    setCampaignGroups(data.groups || []);
-    setManagers(data.managers || []);
-    setRanks(data.ranks || []);
-    setGifts(data.gifts || []);
-    setLotteries(data.lotteries || []);
-    setPatrols(data.patrols || []);
-    setRepToAdminMessages(data.repToAdminMessages || []);
-    setRepTasks(data.repTasks || []);
-    setDailyReports(data.dailyReports || []);
-    setSystemMessages(data.systemMessages || []);
-    setAllCustomers(data.customers || []);
-    setClearingSettings(data.clearingSettings);
+      setAllRepresentatives(data.representatives || mockRepresentatives);
+      setAllDonors(data.donors || mockDonors);
+      setAllDonations(data.donations || []);
+      setAllExpenses(data.expenses || []);
+      setAllPaths(data.paths || mockPaths);
+      setAllCallLists(data.callLists || mockCallLists);
+      setCampaignGroups(data.groups || []);
+      setManagers(data.managers || []);
+      setRanks(data.ranks || []);
+      setGifts(data.gifts || []);
+      setLotteries(data.lotteries || []);
+      setPatrols(data.patrols || []);
+      setRepToAdminMessages(data.repToAdminMessages || []);
+      setRepTasks(data.repTasks || []);
+      setDailyReports(data.dailyReports || []);
+      setSystemMessages(data.systemMessages || []);
+      setAllCustomers(data.customers || []);
+      setClearingSettings(data.clearingSettings);
+    }
     
     isLoaded.current = true;
     setTimeout(() => setIsSyncing(false), 300);
