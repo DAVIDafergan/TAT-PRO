@@ -53,7 +53,7 @@ app.post('/api/data', async (req, res) => {
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // ✅ התיקון כאן: שימוש ב- (*) במקום רק * כדי למנוע את השגיאה ב-Node v22
-app.get('(*)', (req, res) => {
+app.get('/:path*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
