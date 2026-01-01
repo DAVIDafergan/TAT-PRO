@@ -1,9 +1,10 @@
-
 import { Customer, Campaign, Representative, Donation, Donor, Expense, Path, CallList, CampaignGroup, User, Patrol, RankDefinition, Gift, Lottery, UserRole, RepToAdminMessage, RepTask, DailyReport, SystemMessage, ClearingSettings } from '../types';
 import { mockCampaigns, mockRepresentatives, mockDonors, mockDonations, mockRanks, mockGifts, mockLotteries, mockPaths, mockCallLists, mockSystemMessages, mockCustomers } from './mockData';
 
 const DB_KEY = 'tat_pro_db_v1';
 const SYNC_CHANNEL = 'tat_pro_sync_channel';
+// כתובת השרת ב-Railway (תתעדכן אוטומטית לפי ה-Deploy)
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/data';
 
 const syncChannel = new BroadcastChannel(SYNC_CHANNEL);
 
@@ -44,7 +45,19 @@ const charidyMocks: Donation[] = [
 ];
 
 export const db = {
-  loadAll: (): DBStore => {
+  loadAll: async (): Promise<DBStore> => {
+    // 1. ניסיון טעינה מ-MongoDB
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const remoteData = await response.json();
+        if (remoteData) return remoteData;
+      }
+    } catch (e) {
+      console.warn("MongoDB not reachable, using local data");
+    }
+
+    // 2. לוגיקת LocalStorage המקורית (ללא שינוי אות אחת)
     const data = localStorage.getItem(DB_KEY);
     if (!data) {
       const initialStore: DBStore = {
@@ -123,9 +136,21 @@ export const db = {
     return parsed;
   },
 
-  saveAll: (store: DBStore) => {
+  saveAll: async (store: DBStore) => {
+    // 1. שמירה ל-LocalStorage (ללא שינוי)
     localStorage.setItem(DB_KEY, JSON.stringify(store));
     syncChannel.postMessage('db_updated');
+
+    // 2. שמירה ל-MongoDB בענן
+    try {
+      await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(store)
+      });
+    } catch (e) {
+      console.error("Failed to sync with MongoDB");
+    }
   },
 
   onSync: (callback: () => void) => {
