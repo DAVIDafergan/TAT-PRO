@@ -129,9 +129,30 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       textPrimary: "text-slate-100", 
       textSecondary: "text-slate-400" 
     },
-    podium: { bg: "bg-[#0f172a]", headerBg: "bg-slate-900 border-slate-800", cardBg: "bg-slate-800/50 border-slate-700 shadow-2xl", footerBg: "bg-black border-t-slate-800", textPrimary: "text-white", textSecondary: "text-slate-400" },
-    cyber: { bg: "bg-black", headerBg: "bg-black border-blue-900/50", cardBg: "bg-slate-900/40 border-blue-500/20", footerBg: "bg-slate-950 border-t-blue-900/50", textPrimary: "text-blue-50", textSecondary: "text-blue-400/60" }
+    podium: { 
+      bg: "bg-[#1a0505]", // בורדו יוקרתי
+      headerBg: "bg-black/30 border-red-900/20", 
+      cardBg: "bg-red-900/10 border-red-500/20 backdrop-blur-md", 
+      footerBg: "bg-black/60 border-t-red-900/30", 
+      textPrimary: "text-red-50", 
+      textSecondary: "text-red-300/60" 
+    },
+    cyber: { 
+      bg: "bg-[#050a08]", // ירוק יער אצילי
+      headerBg: "bg-black/40 border-emerald-900/20", 
+      cardBg: "bg-emerald-900/10 border-emerald-500/20 backdrop-blur-md", 
+      footerBg: "bg-black/60 border-t-emerald-900/30", 
+      textPrimary: "text-emerald-50", 
+      textSecondary: "text-emerald-300/60" 
+    }
   }[currentTheme];
+
+  const handleThemeSwitch = () => {
+    const themes: ProjectionTheme[] = ['elite', 'podium', 'cyber'];
+    const currentIndex = themes.indexOf(currentTheme);
+    const nextIndex = (currentIndex + 1) % themes.length;
+    setCurrentTheme(themes[nextIndex]);
+  };
 
   // הכפלת הרשימה לצורך גלילה אינסופית חלקה
   const displayReps = [...sortedReps, ...sortedReps];
@@ -142,7 +163,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       <audio ref={audioRef} src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" preload="auto" />
 
       {/* רקע יוקרתי עדין */}
-      <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_50%_-20%,_#1e293b_0%,_transparent_50%)]"></div>
+      <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_50%_-20%,_#1e293b_0%,_transparent_50%)] opacity-40"></div>
 
       <header className={`w-full backdrop-blur-md border-b p-6 z-50 flex flex-col gap-6 ${themeStyles.headerBg}`}>
         <div className="flex items-center justify-between px-4">
@@ -192,10 +213,10 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
         </div>
       </header>
 
-      {/* אזור נציגים בגלילה אנכית אוטומטית */}
+      {/* אזור נציגים בגלילה אנכית אוטומטית (מהירות מוגברת 35s) */}
       <main className="flex-1 relative z-10 overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0a0c10] to-transparent z-20"></div>
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0c10] to-transparent z-20"></div>
+          <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0a0c10] to-transparent z-20 opacity-40"></div>
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0c10] to-transparent z-20 opacity-40"></div>
           
           <div className="animate-vertical-marquee p-10 h-full">
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-6">
@@ -208,7 +229,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
                 return (
                   <div key={`${rep.id}-${idx}`} className={`group rounded-3xl p-6 flex flex-col items-center transition-all duration-500 ${themeStyles.cardBg} border border-transparent hover:border-white/20 relative`}>
                     <div className="relative mb-4">
-                      <div className={`w-20 h-20 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl font-black text-white relative shadow-2xl border border-white/5`}>
+                      <div className={`w-20 h-20 rounded-2xl bg-slate-800/50 flex items-center justify-center text-2xl font-black text-white relative shadow-2xl border border-white/5`}>
                         {rep.name.charAt(0)}
                         <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-xl flex items-center justify-center border-2 border-[#0a0c10] shadow-md" style={{ backgroundColor: group?.color || '#2563eb' }}>
                             <RankIcon rankName={rank.name} color="#fff" size={14} />
@@ -307,16 +328,25 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
               ))}
             </div>
           </div>
+
+          {/* כפתור החלפת ערכת נושא יוקרתי */}
+          <button 
+            onClick={handleThemeSwitch} 
+            className="absolute left-6 bottom-6 p-3 bg-white/5 border border-white/10 text-slate-500 rounded-full hover:bg-white/10 transition-all"
+            title="החלף סגנון מסך"
+          >
+            <Palette size={18} />
+          </button>
       </footer>
 
       <style>{`
-        /* גלילה אנכית רציפה */
+        /* גלילה אנכית רציפה מהירה יותר */
         @keyframes verticalMarquee {
           0% { transform: translateY(0); }
           100% { transform: translateY(-50%); }
         }
         .animate-vertical-marquee {
-          animation: verticalMarquee 60s linear infinite;
+          animation: verticalMarquee 35s linear infinite;
         }
         .animate-vertical-marquee:hover {
           animation-play-state: paused;
