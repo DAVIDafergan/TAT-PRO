@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
-import { Representative, Donation, Path, CallList, Donor, AssignmentStatus, Patrol, SystemMessage, UserRole, PaymentMethod, ClearingSettings } from '../types';
+import { Representative, Donation, Path, CallList, Donor, AssignmentStatus, Patrol, SystemMessage, UserRole, PaymentMethod, ClearingSettings, Gift, Lottery } from '../types';
 import { mockRanks } from '../services/mockData';
-import { db } from '../services/db'; 
+import { db } from '../services/db'; // חיבור למסד הנתונים
 import { 
   Home, PlusCircle, Clock, MapPin, 
   X, Smartphone, Wallet, CreditCard, Check, 
   Phone, TrendingUp, Banknote, Sun, Moon, 
   LogOut, MapPinned, PhoneCall, MessageCircle, 
   Navigation2, Share2, Award, Gem, Sprout, Trophy, ChevronLeft,
-  FileText, Landmark, Info, Bell, Send, User, MessageSquare, ClipboardEdit
+  FileText, Landmark, Info, Bell, Send, User, MessageSquare, ClipboardEdit,
+  Gift as GiftIcon, Ticket, CheckCircle2, ChevronRight
 } from 'lucide-react';
 
 interface RepPortalProps {
@@ -27,10 +28,12 @@ interface RepPortalProps {
   onLogout: () => void;
   onBackToAdmin?: () => void;
   clearingSettings: ClearingSettings;
+  gifts: Gift[];
+  lotteries: Lottery[];
 }
 
 const RepPortal: React.FC<RepPortalProps> = ({ 
-  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings, systemMessages, sendRepMessage, donors
+  rep, donations, addDonation, paths, callLists, updateDonorStatus, onLogout, onBackToAdmin, clearingSettings, systemMessages, sendRepMessage, donors, gifts, lotteries
 }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [showAddDonation, setShowAddDonation] = useState(false);
@@ -38,9 +41,11 @@ const RepPortal: React.FC<RepPortalProps> = ({
   const [activeDonorForReporting, setActiveDonorForReporting] = useState<Donor | null>(null);
   const [reportingStep, setReportingStep] = useState<'initial' | 'amount' | 'details' | 'success'>('initial');
   
+  // State להודעות והתראות
   const [showMessagesModal, setShowMessagesModal] = useState(false);
   const [repMessageToAdmin, setRepMessageToAdmin] = useState('');
 
+  // State לשיתוף
   const [shareText, setShareText] = useState('היי, אני לוקח חלק בקמפיין החשוב הזה! אשמח שתעזור לי להגיע ליעד שלי דרך הלינק האישי:');
   const [phoneNumbers, setPhoneNumbers] = useState('');
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -55,11 +60,16 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   const isDark = theme === 'dark';
 
-  // שינוי: בחירת המשימה האחרונה שנוספה (כך שחדשה מחליפה ישנה)
-  const myActivePath = useMemo(() => [...(paths || [])].reverse().find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
-  const myCallList = useMemo(() => [...(callLists || [])].reverse().find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
+  // חישובי מתנות והגרלות
+  const earnedGifts = useMemo(() => (gifts || []).filter(g => (rep?.totalRaised || 0) >= g.minAmount).sort((a,b) => b.minAmount - a.minAmount), [gifts, rep?.totalRaised]);
+  const nextGift = useMemo(() => (gifts || []).filter(g => (rep?.totalRaised || 0) < g.minAmount).sort((a,b) => a.minAmount - b.minAmount)[0], [gifts, rep?.totalRaised]);
+  const eligibleLotteries = useMemo(() => (lotteries || []).filter(l => (rep?.totalRaised || 0) >= l.minThreshold), [lotteries, rep?.totalRaised]);
+
+  // סנכרון משימות מהמסד
+  const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
+  const myCallList = useMemo(() => (callLists || []).find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
   
-  // סנכרון דו-כיווני: קבלת הודעות מהמנהל
+  // סינון הודעות רלוונטיות לנציג
   const myMessages = useMemo(() => (systemMessages || []).filter(m => 
     m.targetType === 'all' || 
     (m.targetType === 'specific' && m.targetIds?.includes(rep.id)) ||
@@ -116,7 +126,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
       addDonation(donationData);
       db.addDonation(donationData);
       
-      // עדכון ה-CRM: הוספת סכום התרומה לפרטי התורם ושינוי סטטוס לתרם
+      // עדכון ה-CRM: הוספת סכום התרומה לפרטי התורם ושינוי סטטוס
       if (activeDonorForReporting) {
         const updatedDonor = { 
           ...activeDonorForReporting, 
@@ -152,6 +162,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
     if (!repMessageToAdmin.trim()) return;
     sendRepMessage(repMessageToAdmin);
     
+    // סנכרון לשרת
     const msgId = Math.random().toString(36).substr(2, 9);
     db.saveRepToAdminMessage({
       id: msgId,
@@ -254,6 +265,75 @@ const RepPortal: React.FC<RepPortalProps> = ({
                    סה"כ מאושר: ₪{(rep?.totalRaised || 0).toLocaleString()}
                 </p>
              </section>
+
+             {/* מדור מתנות והגרלות חדש */}
+             <div className="grid grid-cols-1 gap-4">
+                <section className={`rounded-[30px] p-6 border ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100'} shadow-sm space-y-5`}>
+                   <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                         <GiftIcon className="text-blue-600" size={20} />
+                         <h3 className="text-sm font-black">המתנות שלי</h3>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">{earnedGifts.length} התקבלו</span>
+                   </div>
+
+                   {nextGift ? (
+                     <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl space-y-3">
+                        <div className="flex justify-between items-center">
+                           <p className="text-xs font-bold text-slate-600 dark:text-slate-300">המתנה הבאה: <span className="text-blue-600 font-black">{nextGift.name}</span></p>
+                           <p className="text-[10px] font-black text-blue-600 tabular-nums">₪{(nextGift.minAmount - (rep?.totalRaised || 0)).toLocaleString()} נותר</p>
+                        </div>
+                        <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                           <div 
+                             className="h-full bg-blue-600 transition-all duration-700" 
+                             style={{width: `${Math.min(100, ((rep?.totalRaised || 0) / nextGift.minAmount) * 100)}%`}}
+                           ></div>
+                        </div>
+                     </div>
+                   ) : (
+                     <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl flex items-center gap-3">
+                        <Trophy className="text-emerald-600" size={20} />
+                        <p className="text-xs font-black text-emerald-700">כל הכבוד! הגעת לכל המתנות האפשריות.</p>
+                     </div>
+                   )}
+
+                   {earnedGifts.length > 0 && (
+                     <div className="flex gap-2 overflow-x-auto py-1 scroll-hide">
+                        {earnedGifts.map(gift => (
+                          <div key={gift.id} className="px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center gap-2 shrink-0 border border-slate-200 dark:border-white/5">
+                             <CheckCircle2 size={12} className="text-emerald-500" />
+                             <span className="text-[10px] font-bold">{gift.name}</span>
+                          </div>
+                        ))}
+                     </div>
+                   )}
+                </section>
+
+                <section className={`rounded-[30px] p-6 border ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100'} shadow-sm space-y-4`}>
+                   <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                         <Ticket className="text-orange-600" size={20} />
+                         <h3 className="text-sm font-black">הגרלות פעילות</h3>
+                      </div>
+                   </div>
+
+                   <div className="space-y-2">
+                      {eligibleLotteries.length > 0 ? (
+                        eligibleLotteries.map(lottery => (
+                          <div key={lottery.id} className="flex items-center justify-between p-3 bg-orange-50/30 dark:bg-orange-900/5 rounded-xl border border-orange-100 dark:border-orange-900/20">
+                             <div className="text-right">
+                                <p className="text-xs font-black text-slate-800 dark:text-white">{lottery.title}</p>
+                                <p className="text-[9px] font-bold text-slate-400">פרס: {lottery.prize}</p>
+                             </div>
+                             <div className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-[8px] font-black uppercase">זכאי להשתתף</div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[10px] text-slate-400 font-bold text-center py-4 italic">המשך לגייס כדי להיכנס להגרלות היוקרתיות!</p>
+                      )}
+                   </div>
+                </section>
+             </div>
 
              <div className="grid grid-cols-2 gap-4 w-full">
                 <button onClick={() => setActiveTab('myPath')} className={`p-6 rounded-[28px] border transition-all active:scale-95 group ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100'}`}>
