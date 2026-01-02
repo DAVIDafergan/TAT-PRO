@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { RankDefinition, Gift, Lottery, EligibilityType, Representative, Donation } from '../types';
 import { 
@@ -66,15 +65,28 @@ const RewardsManager: React.FC<RewardsManagerProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // סינכרון שדות יעד כדי שיופיעו בפורטל הנציג באופן אוטומטי
+    const processedData = { ...formData };
+    if (activeTab === 'gifts') {
+      // הבטחת סנכרון מול ה-Personal Area שמשתמש ב-minAmount
+      processedData.minAmount = formData.milestoneAmount || formData.minAmount;
+      processedData.milestoneAmount = processedData.minAmount;
+    }
+    if (activeTab === 'lotteries') {
+      // הגרלה אוטומטית מבוססת סף כניסה
+      processedData.minThreshold = formData.minThreshold;
+    }
+
     if (activeTab === 'ranks') {
-      if (editingItem) setRanks(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...formData } : x));
-      else setRanks(prev => [...prev, { ...formData, id: Math.random().toString(36).substr(2, 9), icon: 'Award' }]);
+      if (editingItem) setRanks(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...processedData } : x));
+      else setRanks(prev => [...prev, { ...processedData, id: Math.random().toString(36).substr(2, 9), icon: 'Award' }]);
     } else if (activeTab === 'gifts') {
-      if (editingItem) setGifts(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...formData } : x));
-      else setGifts(prev => [...prev, { ...formData, id: Math.random().toString(36).substr(2, 9) }]);
+      if (editingItem) setGifts(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...processedData } : x));
+      else setGifts(prev => [...prev, { ...processedData, id: Math.random().toString(36).substr(2, 9) }]);
     } else {
-      if (editingItem) setLotteries(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...formData } : x));
-      else setLotteries(prev => [...prev, { ...formData, id: Math.random().toString(36).substr(2, 9), status: 'active' }]);
+      if (editingItem) setLotteries(prev => prev.map(x => x.id === editingItem.id ? { ...x, ...processedData } : x));
+      else setLotteries(prev => [...prev, { ...processedData, id: Math.random().toString(36).substr(2, 9), status: 'active' }]);
     }
     setShowModal(false);
   };
@@ -115,6 +127,10 @@ const RewardsManager: React.FC<RewardsManagerProps> = ({
                        <div>
                          <h3 className="text-2xl font-black text-slate-900 mb-1">{lottery.title}</h3>
                          <p className="text-xs font-bold text-slate-500 line-clamp-2">{lottery.description}</p>
+                         <div className="flex items-center gap-2 mt-2">
+                            <Target size={12} className="text-blue-600" />
+                            <span className="text-[10px] font-black text-blue-600">סף כניסה: {lottery.minThreshold?.toLocaleString()} ש"ח</span>
+                         </div>
                        </div>
                      </div>
                      {lottery.status === 'active' && <button onClick={() => onTriggerDraw(lottery)} className="w-full py-4 bg-slate-900 text-white rounded-[22px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl"><PlayCircle size={20} className="text-blue-500" /> הפעל הגרלה כעת</button>}
@@ -132,7 +148,7 @@ const RewardsManager: React.FC<RewardsManagerProps> = ({
                      <div className="flex-1">
                         <div className="flex justify-between items-start mb-2">
                            <h4 className="text-lg font-black text-slate-900 truncate">{gift.name}</h4>
-                           <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black shadow-lg">{gift.milestoneAmount.toLocaleString()} ש"ח</span>
+                           <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black shadow-lg">{(gift.milestoneAmount || gift.minAmount)?.toLocaleString()} ש"ח</span>
                         </div>
                         <p className="text-xs font-bold text-slate-500 mb-4 line-clamp-2">{gift.description}</p>
                         <div className="flex gap-2">
@@ -180,17 +196,29 @@ const RewardsManager: React.FC<RewardsManagerProps> = ({
                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">תמונה מלווה</label>
                      <div onClick={() => fileInputRef.current?.click()} className="w-full aspect-video bg-slate-50 border-2 border-dashed border-slate-200 rounded-[28px] flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-all overflow-hidden relative group">
                         {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <ImageIcon className="text-slate-300 mb-2" size={32} />}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-black uppercase tracking-widest"><Upload size={20} className="ml-2" /> החלף תמונה</div>
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
                      </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1.5 col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">שם / כותרת</label><input required value={activeTab === 'lotteries' ? formData.title : formData.name} onChange={e => setFormData({ ...formData, [activeTab === 'lotteries' ? 'title' : 'name']: e.target.value })} type="text" className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-bold outline-none" /></div>
-                    <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">סכום יעד (₪)</label><input type="number" value={activeTab === 'ranks' ? formData.minAmount : activeTab === 'gifts' ? formData.milestoneAmount : formData.minThreshold} onChange={e => setFormData({ ...formData, [activeTab === 'ranks' ? 'minAmount' : activeTab === 'gifts' ? 'milestoneAmount' : 'minThreshold']: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-black outline-none" /></div>
-                    {activeTab === 'ranks' && <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">צבע מזהה</label><input type="color" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} className="w-full h-14 bg-slate-50 border border-slate-200 rounded-xl p-1 cursor-pointer" /></div>}
+                    
+                    <div className="space-y-1.5 col-span-2">
+                       <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest mr-2">סכום יעד לזכאות (₪)</label>
+                       <p className="text-[8px] text-slate-400 mb-2 mr-2">הנציג יצטרף אוטומטית להגרלה/מתנה בפורטל האישי ברגע שיגיע לסכום זה</p>
+                       <input type="number" value={activeTab === 'ranks' ? formData.minAmount : activeTab === 'gifts' ? formData.milestoneAmount : formData.minThreshold} onChange={e => {
+                         const val = Number(e.target.value);
+                         if (activeTab === 'ranks') setFormData({ ...formData, minAmount: val });
+                         else if (activeTab === 'gifts') setFormData({ ...formData, milestoneAmount: val, minAmount: val });
+                         else setFormData({ ...formData, minThreshold: val });
+                       }} className="w-full bg-blue-50/30 border border-blue-100 rounded-2xl p-4 font-black outline-none focus:ring-2 ring-blue-500" />
+                    </div>
+
+                    {activeTab === 'ranks' && <div className="space-y-1.5 col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">צבע מזהה</label><input type="color" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} className="w-full h-14 bg-slate-50 border border-slate-200 rounded-xl p-1 cursor-pointer" /></div>}
                     <div className="col-span-2 space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2">תיאור</label><textarea rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-bold outline-none resize-none text-xs" /></div>
                   </div>
                </div>
-               <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black text-lg rounded-3xl shadow-xl active:scale-95 transition-all">שמור במערכת</button>
+               <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black text-lg rounded-3xl shadow-xl active:scale-95 transition-all">שמור וסנכרן לנציגים</button>
             </form>
           </div>
         </div>
