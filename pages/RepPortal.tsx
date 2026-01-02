@@ -10,7 +10,7 @@ import {
   LogOut, MapPinned, PhoneCall, MessageCircle, 
   Navigation2, Share2, Award, Gem, Sprout, Trophy, ChevronLeft,
   FileText, Landmark, Info, Bell, Send, User, MessageSquare, ClipboardEdit,
-  Gift as GiftIcon, Ticket, CheckCircle2, ChevronRight, Sparkles
+  Gift as GiftIcon, Ticket, CheckCircle2, ChevronRight, Sparkles, Star
 } from 'lucide-react';
 
 interface RepPortalProps {
@@ -67,10 +67,19 @@ const RepPortal: React.FC<RepPortalProps> = ({
       .reduce((sum, d) => sum + (d.amount || 0), 0);
   }, [donations, rep?.id]);
 
-  // חישובי מתנות והגרלות מסונכרנים לסכום החי
-  const earnedGifts = useMemo(() => (gifts || []).filter(g => liveTotalRaised >= g.minAmount).sort((a,b) => b.minAmount - a.minAmount), [gifts, liveTotalRaised]);
-  const nextGift = useMemo(() => (gifts || []).filter(g => liveTotalRaised < g.minAmount).sort((a,b) => a.minAmount - b.minAmount)[0], [gifts, liveTotalRaised]);
-  const eligibleLotteries = useMemo(() => (lotteries || []).filter(l => liveTotalRaised >= (l.minThreshold || 0)), [lotteries, liveTotalRaised]);
+  // --- תיקון סנכרון מתנות והגרלות: תמיכה בכל שמות השדות מהמנהל ---
+  const earnedGifts = useMemo(() => 
+    (gifts || []).filter(g => liveTotalRaised >= (g.minAmount || g.milestoneAmount || 0))
+    .sort((a,b) => (b.minAmount || b.milestoneAmount || 0) - (a.minAmount || a.milestoneAmount || 0)), 
+  [gifts, liveTotalRaised]);
+
+  const nextGift = useMemo(() => 
+    (gifts || []).filter(g => liveTotalRaised < (g.minAmount || g.milestoneAmount || 0))
+    .sort((a,b) => (a.minAmount || a.milestoneAmount || 0) - (b.minAmount || b.milestoneAmount || 0))[0], 
+  [gifts, liveTotalRaised]);
+
+  // הצגת כל ההגרלות הפעילות במערכת
+  const activeLotteriesList = useMemo(() => (lotteries || []).filter(l => l.status === 'active'), [lotteries]);
 
   // סנכרון משימות מהמסד
   const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
@@ -288,33 +297,39 @@ const RepPortal: React.FC<RepPortalProps> = ({
                       <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 rounded-full text-[9px] font-black uppercase tracking-widest">{earnedGifts.length} בוצעו</span>
                    </div>
 
-                   {nextGift ? (
-                     <div className="bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 p-5 rounded-[24px] space-y-4">
-                        <div className="flex justify-between items-start">
-                           <div>
-                              <p className="text-[10px] font-black text-slate-400 uppercase mb-1">היעד הבא</p>
-                              <p className="text-sm font-black text-blue-600">{nextGift.name}</p>
-                           </div>
-                           <div className="text-left">
-                              <p className="text-[10px] font-black text-slate-400 uppercase mb-1">חסר עוד</p>
-                              <p className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200">₪{(nextGift.minAmount - liveTotalRaised).toLocaleString()}</p>
-                           </div>
+                   {gifts && gifts.length > 0 ? (
+                      nextGift ? (
+                        <div className="bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 p-5 rounded-[24px] space-y-4">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">היעד הבא</p>
+                                  <p className="text-sm font-black text-blue-600">{nextGift.name}</p>
+                              </div>
+                              <div className="text-left">
+                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">חסר עוד</p>
+                                  <p className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200">₪{((nextGift.minAmount || nextGift.milestoneAmount || 0) - liveTotalRaised).toLocaleString()}</p>
+                              </div>
+                            </div>
+                            <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-l from-blue-600 to-blue-400 transition-all duration-1000 shadow-lg" 
+                                style={{width: `${Math.min(100, (liveTotalRaised / (nextGift.minAmount || nextGift.milestoneAmount || 1)) * 100)}%`}}
+                              ></div>
+                            </div>
                         </div>
-                        <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                           <div 
-                             className="h-full bg-gradient-to-l from-blue-600 to-blue-400 transition-all duration-1000 shadow-lg" 
-                             style={{width: `${Math.min(100, (liveTotalRaised / nextGift.minAmount) * 100)}%`}}
-                           ></div>
+                      ) : (
+                        <div className="p-5 bg-emerald-50 dark:bg-emerald-900/10 rounded-[24px] border border-emerald-100 dark:border-emerald-900/20 flex items-center gap-4 animate-pulse">
+                            <Sparkles className="text-emerald-600" size={24} />
+                            <div>
+                              <p className="text-xs font-black text-emerald-800 dark:text-emerald-400">הגעת לפסגה!</p>
+                              <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות שהוגדרו בקמפיין.</p>
+                            </div>
                         </div>
-                     </div>
+                      )
                    ) : (
-                     <div className="p-5 bg-emerald-50 dark:bg-emerald-900/10 rounded-[24px] border border-emerald-100 dark:border-emerald-900/20 flex items-center gap-4 animate-pulse">
-                        <Sparkles className="text-emerald-600" size={24} />
-                        <div>
-                           <p className="text-xs font-black text-emerald-800 dark:text-emerald-400">הגעת לפסגה!</p>
-                           <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות האפשריות בקמפיין.</p>
-                        </div>
-                     </div>
+                      <div className="text-center py-6 bg-slate-50 dark:bg-white/5 rounded-3xl border border-dashed border-slate-200 dark:border-white/10">
+                          <p className="text-[11px] text-slate-400 font-bold uppercase italic">טרם הוגדרו מתנות לקמפיין זה</p>
+                      </div>
                    )}
 
                    {earnedGifts.length > 0 && (
@@ -337,28 +352,38 @@ const RepPortal: React.FC<RepPortalProps> = ({
                       <div className="w-10 h-10 bg-orange-50 dark:bg-orange-900/20 rounded-xl flex items-center justify-center text-orange-600">
                          <Ticket size={22} />
                       </div>
-                      <h3 className="text-[15px] font-black">הגרלות פעילות</h3>
+                      <h3 className="text-[15px] font-black">הגרלות בקמפיין</h3>
                    </div>
 
                    <div className="space-y-3">
-                      {eligibleLotteries.length > 0 ? (
-                        eligibleLotteries.map(lottery => (
-                          <div key={lottery.id} className="group flex items-center justify-between p-4 bg-orange-50/20 dark:bg-orange-900/5 rounded-[22px] border border-orange-100/50 dark:border-orange-900/20 hover:border-orange-300 transition-all">
-                             <div className="text-right">
-                                <p className="text-[13px] font-black text-slate-800 dark:text-white leading-none mb-1.5">{lottery.title}</p>
-                                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-tight flex items-center gap-1.5">
-                                   <Star size={10} fill="currentColor" /> {lottery.prize}
-                                </p>
-                             </div>
-                             <div className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-500/20 flex items-center gap-1">
-                                <Check size={10} strokeWidth={3} /> זכאי להשתתף
-                             </div>
-                          </div>
-                        ))
+                      {activeLotteriesList.length > 0 ? (
+                        activeLotteriesList.map(lottery => {
+                          const isEligible = liveTotalRaised >= (lottery.minThreshold || 0);
+                          return (
+                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isEligible ? 'bg-emerald-50/30 dark:bg-emerald-900/5 border-emerald-100/50' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
+                               <div className="text-right">
+                                  <p className="text-[13px] font-black text-slate-800 dark:text-white leading-none mb-1.5">{lottery.title}</p>
+                                  <p className={`text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5 ${isEligible ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                     <Star size={10} fill={isEligible ? "currentColor" : "none"} /> פרס: {lottery.prize}
+                                  </p>
+                               </div>
+                               {isEligible ? (
+                                  <div className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-500/20 flex items-center gap-1">
+                                      <Check size={10} strokeWidth={3} /> זכאי להשתתף
+                                  </div>
+                               ) : (
+                                  <div className="text-left">
+                                      <p className="text-[8px] font-black text-slate-400 uppercase">נשאר עוד</p>
+                                      <p className="text-[11px] font-black text-slate-600 tabular-nums">₪{((lottery.minThreshold || 0) - liveTotalRaised).toLocaleString()}</p>
+                                  </div>
+                               )}
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="text-center py-6 bg-slate-50 dark:bg-white/5 rounded-3xl border border-dashed border-slate-200 dark:border-white/10">
                            <Ticket className="mx-auto text-slate-300 mb-2 opacity-30" size={32} />
-                           <p className="text-[11px] text-slate-400 font-bold uppercase italic tracking-widest">המשך לגייס כדי להיכנס להגרלות היוקרתיות!</p>
+                           <p className="text-[11px] text-slate-400 font-bold uppercase italic tracking-widest">טרם פורסמו הגרלות</p>
                         </div>
                       )}
                    </div>
