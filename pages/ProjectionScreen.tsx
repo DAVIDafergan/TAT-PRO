@@ -41,8 +41,9 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
   const [winnerName, setWinnerName] = useState<string | null>(null);
   const [shuffleName, setShuffleName] = useState('');
   
-  const [lastDonationPopup, setLastDonationPopup] = useState<Donation | null>(null);
-  const prevDonationsCount = useRef(donations.length);
+  // ניהול רשימת התראות פעילות
+  const [activePopups, setActivePopups] = useState<Donation[]>([]);
+  const prevDonationIds = useRef<Set<string>>(new Set(donations.map(d => d.id)));
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const sortedReps = useMemo(() => {
@@ -60,24 +61,31 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
 
   const globalPercent = Math.min(100, Math.round((campaign.raised / campaign.goal) * 100));
 
+  // זיהוי תרומות חדשות שאושרו
   useEffect(() => {
-    if (donations.length > prevDonationsCount.current) {
-      const newDonation = donations[0]; 
-      setLastDonationPopup(newDonation);
-      
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(e => console.log("Audio play blocked"));
-      }
+    const newConfirmedDonations = donations.filter(d => 
+      d.status === 'confirmed' && !prevDonationIds.current.has(d.id)
+    );
 
-      const timer = setTimeout(() => {
-        setLastDonationPopup(null);
-      }, 10000);
-      
-      prevDonationsCount.current = donations.length;
-      return () => clearTimeout(timer);
+    if (newConfirmedDonations.length > 0) {
+      newConfirmedDonations.forEach(donation => {
+        // הפעלת צליל
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(e => console.log("Audio play blocked"));
+        }
+
+        // הוספה לרשימת ההתראות (החדשה ביותר למעלה)
+        setActivePopups(prev => [donation, ...prev]);
+
+        // הגדרת טיימר להסרה אחרי 5 שניות בדיוק
+        setTimeout(() => {
+          setActivePopups(prev => prev.filter(p => p.id !== donation.id));
+        }, 5000);
+
+        prevDonationIds.current.add(donation.id);
+      });
     }
-    prevDonationsCount.current = donations.length;
   }, [donations]);
 
   useEffect(() => {
@@ -118,7 +126,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
 
   const themeStyles = {
     elite: { 
-      bg: "bg-[#fcfcfd]", // בהיר יוקרתי
+      bg: "bg-[#fcfcfd]", 
       headerBg: "bg-white border-slate-200", 
       cardBg: "bg-white border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.05)]", 
       footerBg: "bg-slate-50 border-t-slate-200", 
@@ -128,7 +136,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       barBg: "bg-slate-100"
     },
     podium: { 
-      bg: "bg-[#1a0505]", // בורדו מלכותי
+      bg: "bg-[#1a0505]", 
       headerBg: "bg-black/30 border-red-900/20", 
       cardBg: "bg-red-900/10 border-red-500/20 backdrop-blur-md", 
       footerBg: "bg-black/60 border-t-red-900/30", 
@@ -138,7 +146,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       barBg: "bg-white/5"
     },
     cyber: { 
-      bg: "bg-[#050505]", // זהב קיסרי
+      bg: "bg-[#050505]", 
       headerBg: "bg-black border-amber-900/40", 
       cardBg: "bg-amber-950/10 border-amber-500/10 backdrop-blur-md", 
       footerBg: "bg-black border-t-amber-900/40", 
@@ -266,23 +274,26 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
           </div>
       </main>
 
-      {lastDonationPopup && (
-        <div className="fixed top-1/4 right-8 z-[300] animate-pop-in">
-           <div className={`${currentTheme === 'elite' ? 'bg-white' : 'bg-slate-900/95'} border ${currentTheme === 'elite' ? 'border-blue-500/20' : 'border-amber-500/30'} backdrop-blur-3xl rounded-[35px] p-7 shadow-[0_30px_60px_rgba(0,0,0,0.2)] flex items-center gap-6 max-w-sm w-[360px] border-r-[8px] ${currentTheme === 'elite' ? 'border-r-blue-600' : 'border-r-amber-500'}`}>
-              <div className={`w-16 h-16 ${currentTheme === 'elite' ? 'bg-blue-50' : 'bg-amber-500/10'} rounded-2xl flex items-center justify-center ${currentTheme === 'elite' ? 'text-blue-600' : 'text-amber-500'}`}>
-                 <BellRing size={32} />
-              </div>
-              <div className="text-right flex-1">
-                 <h2 className={`text-[10px] font-black ${currentTheme === 'elite' ? 'text-blue-600' : 'text-amber-500'} uppercase tracking-[0.2em] mb-1`}>תרומה חדשה נכנסה!</h2>
-                 <p className={`text-3xl font-black ${themeStyles.textPrimary} tabular-nums leading-none mb-3`}>₪{lastDonationPopup.amount.toLocaleString()}</p>
-                 <div className="space-y-1 border-t border-slate-100/10 pt-2">
-                    <p className={`text-[11px] ${themeStyles.textSecondary} font-bold`}><span className="opacity-60">תורם:</span> {lastDonationPopup.donorName}</p>
-                    <p className={`text-[11px] ${themeStyles.accent} font-bold`}><span className={`${themeStyles.textSecondary} opacity-60`}>נציג:</span> {lastDonationPopup.representativeName}</p>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
+      {/* אזור ערימת התראות תרומה בצד ימין */}
+      <div className="fixed top-1/4 right-8 z-[300] flex flex-col gap-4 max-w-sm w-[360px]">
+        {activePopups.map((popup) => (
+          <div key={popup.id} className="animate-pop-in">
+             <div className={`${currentTheme === 'elite' ? 'bg-white' : 'bg-slate-900/95'} border ${currentTheme === 'elite' ? 'border-blue-500/20' : 'border-amber-500/30'} backdrop-blur-3xl rounded-[35px] p-7 shadow-[0_30px_60px_rgba(0,0,0,0.2)] flex items-center gap-6 border-r-[8px] ${currentTheme === 'elite' ? 'border-r-blue-600' : 'border-r-amber-500'}`}>
+                <div className={`w-16 h-16 ${currentTheme === 'elite' ? 'bg-blue-50' : 'bg-amber-500/10'} rounded-2xl flex items-center justify-center ${currentTheme === 'elite' ? 'text-blue-600' : 'text-amber-500'}`}>
+                   <BellRing size={32} />
+                </div>
+                <div className="text-right flex-1">
+                   <h2 className={`text-[10px] font-black ${currentTheme === 'elite' ? 'text-blue-600' : 'text-amber-500'} uppercase tracking-[0.2em] mb-1`}>תרומה חדשה נכנסה!</h2>
+                   <p className={`text-3xl font-black ${themeStyles.textPrimary} tabular-nums leading-none mb-3`}>₪{popup.amount.toLocaleString()}</p>
+                   <div className="space-y-1 border-t border-slate-100/10 pt-2">
+                      <p className={`text-[11px] ${themeStyles.textSecondary} font-bold`}><span className="opacity-60">תורם:</span> {popup.donorName}</p>
+                      <p className={`text-[11px] ${themeStyles.accent} font-bold`}><span className={`${themeStyles.textSecondary} opacity-60`}>נציג:</span> {popup.representativeName}</p>
+                   </div>
+                </div>
+             </div>
+          </div>
+        ))}
+      </div>
 
       {(isDrawing || winnerName) && (
           <div className={`fixed inset-0 z-[400] ${currentTheme === 'elite' ? 'bg-white/98' : 'bg-[#050505]/98'} flex flex-col items-center justify-center p-20 text-center animate-fade-in backdrop-blur-xl`}>
