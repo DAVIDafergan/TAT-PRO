@@ -133,6 +133,9 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
     cyber: { bg: "bg-black", headerBg: "bg-black border-blue-900/50", cardBg: "bg-slate-900/40 border-blue-500/20", footerBg: "bg-slate-950 border-t-blue-900/50", textPrimary: "text-blue-50", textSecondary: "text-blue-400/60" }
   }[currentTheme];
 
+  // הכפלת הרשימה לצורך גלילה אינסופית חלקה
+  const displayReps = [...sortedReps, ...sortedReps];
+
   return (
     <div className={`fixed inset-0 ${themeStyles.bg} flex flex-col font-sans select-none overflow-hidden transition-all duration-1000`} dir="rtl">
       
@@ -179,60 +182,81 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
         </div>
 
         <div className="px-4">
-          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden relative">
-            <div className="h-full bg-gradient-to-l from-blue-600 to-indigo-400 transition-all duration-1000" style={{ width: `${globalPercent}%` }}></div>
+          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden relative border border-white/5">
+            <div className="h-full bg-gradient-to-l from-blue-600 to-indigo-400 transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.5)]" style={{ width: `${globalPercent}%` }}></div>
           </div>
           <div className="flex justify-between mt-2 px-1">
              <span className="text-[9px] font-black text-slate-500 uppercase">{globalPercent}% מהיעד הושגו</span>
-             <span className="text-[9px] font-black text-slate-500 uppercase">נותר: ₪{(campaign.goal - campaign.raised).toLocaleString()}</span>
+             <span className="text-[9px] font-black text-slate-500 uppercase">נותר לגיוס: ₪{(campaign.goal - campaign.raised).toLocaleString()}</span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto scroll-hide p-10 relative z-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5">
-            {sortedReps.map((rep, idx) => {
-              const group = groups.find(g => g.id === rep.groupId);
-              const rank = [...mockRanks].reverse().find(r => rep.totalRaised >= r.minAmount) || mockRanks[0];
-              const isTop3 = idx < 3;
+      {/* אזור נציגים בגלילה אנכית אוטומטית */}
+      <main className="flex-1 relative z-10 overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0a0c10] to-transparent z-20"></div>
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0c10] to-transparent z-20"></div>
+          
+          <div className="animate-vertical-marquee p-10 h-full">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-6">
+              {displayReps.map((rep, idx) => {
+                const group = groups.find(g => g.id === rep.groupId);
+                const rank = [...mockRanks].reverse().find(r => rep.totalRaised >= r.minAmount) || mockRanks[0];
+                const isTop3 = (idx % sortedReps.length) < 3;
+                const repPercent = Math.min(100, Math.round((rep.totalRaised / (rep.personalGoal || 1)) * 100));
 
-              return (
-                <div key={rep.id} className={`group rounded-3xl p-5 flex flex-col items-center transition-all duration-500 ${themeStyles.cardBg} border border-transparent hover:border-white/20`}>
-                  <div className="relative mb-4">
-                    <div className={`w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-xl font-black text-white relative shadow-sm group-hover:scale-105 transition-transform`}>
-                      {rep.name.charAt(0)}
-                      <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-lg flex items-center justify-center border-2 border-[#0a0c10] shadow-md" style={{ backgroundColor: group?.color || '#2563eb' }}>
-                          <RankIcon rankName={rank.name} color="#fff" size={12} />
+                return (
+                  <div key={`${rep.id}-${idx}`} className={`group rounded-3xl p-6 flex flex-col items-center transition-all duration-500 ${themeStyles.cardBg} border border-transparent hover:border-white/20 relative`}>
+                    <div className="relative mb-4">
+                      <div className={`w-20 h-20 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl font-black text-white relative shadow-2xl border border-white/5`}>
+                        {rep.name.charAt(0)}
+                        <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-xl flex items-center justify-center border-2 border-[#0a0c10] shadow-md" style={{ backgroundColor: group?.color || '#2563eb' }}>
+                            <RankIcon rankName={rank.name} color="#fff" size={14} />
+                        </div>
                       </div>
+                      {isTop3 && (
+                        <div className="absolute -top-4 -left-4 rotate-[-15deg] drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">
+                           <Crown className="text-amber-500" size={32} />
+                        </div>
+                      )}
                     </div>
-                    {isTop3 && (
-                      <div className="absolute -top-3 -left-3 rotate-[-15deg]">
-                         <Crown className="text-amber-500/80" size={24} />
-                      </div>
-                    )}
-                  </div>
 
-                  <h4 className={`text-[12px] font-bold truncate w-full mb-1 ${themeStyles.textPrimary}`}>{rep.name}</h4>
-                  <p className="text-sm font-black tabular-nums tracking-tight text-white/90">₪{rep.totalRaised.toLocaleString()}</p>
-                </div>
-              );
-            })}
+                    <h4 className={`text-sm font-bold truncate w-full mb-1 ${themeStyles.textPrimary}`}>{rep.name}</h4>
+                    <p className="text-xl font-black tabular-nums tracking-tighter text-white">₪{rep.totalRaised.toLocaleString()}</p>
+                    
+                    {/* יעד וסרגל אישי יוקרתי */}
+                    <div className="mt-4 w-full space-y-2">
+                       <div className="flex justify-between items-center text-[9px] font-black text-slate-500 uppercase tracking-tighter">
+                          <span>יעד: ₪{(rep.personalGoal || 0).toLocaleString()}</span>
+                          <span className={repPercent >= 100 ? "text-emerald-400" : ""}>{repPercent}%</span>
+                       </div>
+                       <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-1000 ${repPercent >= 100 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-blue-500'}`} 
+                            style={{ width: `${repPercent}%` }}
+                          ></div>
+                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
       </main>
 
-      {/* פופ-אפ תרומה חדשה - יוקרתי בצד ימין */}
+      {/* פופ-אפ תרומה חדשה - אלגנטי בצד ימין (10 שניות) */}
       {lastDonationPopup && (
-        <div className="fixed top-1/3 right-6 z-[300] animate-pop-in">
-           <div className="bg-slate-900/90 border border-amber-500/30 backdrop-blur-2xl rounded-3xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-6 max-w-sm w-full border-r-4 border-r-amber-500">
-              <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500 border border-amber-500/20">
-                 <BellRing size={28} />
+        <div className="fixed top-1/4 right-8 z-[300] animate-pop-in">
+           <div className="bg-slate-900/95 border border-amber-500/30 backdrop-blur-3xl rounded-[32px] p-7 shadow-[0_25px_60px_rgba(0,0,0,0.6)] flex items-center gap-6 max-w-sm w-[350px] border-r-[6px] border-r-amber-500">
+              <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500 border border-amber-500/20 shadow-inner">
+                 <BellRing size={32} />
               </div>
-              <div className="text-right">
-                 <h2 className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">תרומה חדשה התקבלה!</h2>
-                 <p className="text-2xl font-black text-white tabular-nums leading-none mb-2">₪{lastDonationPopup.amount.toLocaleString()}</p>
-                 <div className="flex flex-col gap-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold"><span className="text-slate-500">תורם:</span> {lastDonationPopup.donorName}</p>
-                    <p className="text-[10px] text-blue-400 font-bold"><span className="text-slate-500">נציג:</span> {lastDonationPopup.representativeName}</p>
+              <div className="text-right flex-1">
+                 <h2 className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-1">תרומה חדשה התקבלה!</h2>
+                 <p className="text-3xl font-black text-white tabular-nums leading-none mb-3">₪{lastDonationPopup.amount.toLocaleString()}</p>
+                 <div className="space-y-1 border-t border-white/5 pt-2">
+                    <p className="text-[11px] text-slate-300 font-bold flex justify-between"><span className="text-slate-500">תורם:</span> {lastDonationPopup.donorName}</p>
+                    <p className="text-[11px] text-blue-400 font-bold flex justify-between"><span className="text-slate-500">נציג:</span> {lastDonationPopup.representativeName}</p>
                  </div>
               </div>
            </div>
@@ -240,10 +264,10 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       )}
 
       {(isDrawing || winnerName) && (
-          <div className="fixed inset-0 z-[200] bg-[#0a0c10]/95 flex flex-col items-center justify-center p-20 text-center animate-fade-in backdrop-blur-xl">
+          <div className="fixed inset-0 z-[400] bg-[#0a0c10]/98 flex flex-col items-center justify-center p-20 text-center animate-fade-in backdrop-blur-xl">
             <button onClick={closeLotteryOverlay} className="absolute top-12 left-12 p-4 text-slate-500 hover:text-white transition-all"><X size={32}/></button>
             <div className="relative z-10 space-y-12">
-               <div className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-700 rounded-3xl flex items-center justify-center text-black mx-auto shadow-2xl animate-pulse">
+               <div className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-700 rounded-3xl flex items-center justify-center text-black mx-auto shadow-[0_0_50px_rgba(245,158,11,0.4)] animate-pulse">
                   <PartyPopper size={48} />
                </div>
                {isDrawing ? (
@@ -268,7 +292,7 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       <footer className={`h-32 border-t flex items-center px-10 gap-10 shrink-0 z-50 overflow-hidden relative ${themeStyles.footerBg}`}>
           <div className="flex items-center gap-4 pr-6 border-l border-white/5 h-full">
              <TrendingUp size={24} className="text-emerald-500" />
-             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">עדכונים<br/>אחרונים</p>
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap">עדכונים<br/>אחרונים</p>
           </div>
           <div className="flex-1 overflow-hidden h-full flex items-center">
             <div className="flex items-center gap-12 animate-marquee whitespace-nowrap">
@@ -286,6 +310,18 @@ const ProjectionScreen: React.FC<ProjectionScreenProps> = ({
       </footer>
 
       <style>{`
+        /* גלילה אנכית רציפה */
+        @keyframes verticalMarquee {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-50%); }
+        }
+        .animate-vertical-marquee {
+          animation: verticalMarquee 60s linear infinite;
+        }
+        .animate-vertical-marquee:hover {
+          animation-play-state: paused;
+        }
+
         @keyframes marquee { 0% { transform: translateX(20%); } 100% { transform: translateX(-150%); } }
         .animate-marquee { animation: marquee 45s linear infinite; }
         .animate-pop-in { animation: pop-in 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
