@@ -3,7 +3,7 @@ import { Donor, Representative, Path, CallList, Patrol } from '../types';
 import { 
   MapPinned, PhoneCall, Search, Plus, X, Navigation, Clock, 
   Bus, Car, Footprints, Check, Send, FileText, Users, MapPin, 
-  Map as MapIcon, ChevronRight, ListChecks, Activity, Phone, Printer, Sliders, AlertCircle, Eye
+  Map as MapIcon, ChevronRight, ListChecks, Activity, Phone, Printer, Sliders, AlertCircle, Eye, ArrowRight
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -80,16 +80,22 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
         'bus': google.maps.TravelMode.TRANSIT
     };
 
+    const currentTransport = activeTab === 'patrols' ? patrolForm.transport : pathForm.transport;
+
     directionsService.route({
       origin,
       destination,
       waypoints,
-      travelMode: travelModeMap[activeTab === 'patrols' ? patrolForm.transport : pathForm.transport],
+      travelMode: travelModeMap[currentTransport],
       optimizeWaypoints: true,
-      transitOptions: activeTab === 'patrols' && patrolForm.transport === 'bus' ? { modes: [google.maps.TransitMode.BUS] } : undefined
+      transitOptions: currentTransport === 'bus' ? { 
+        modes: [google.maps.TransitMode.BUS],
+        routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS 
+      } : undefined
     }, (result, status) => {
       if (status === google.maps.DirectionsStatus.OK && result) {
         directionsRenderer.setDirections(result);
+        // שמירת ה-Legs (הקטעים בין תורם לתורם)
         setRouteLegs(result.routes[0].legs); 
       }
     });
@@ -177,7 +183,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
     // עדכון סטטוס התורמים ב-Database ל-"בטיפול"
     for (const donor of activeTaskDonors) {
-       await db.saveDonor({ ...donor, assignmentStatus: 'in_treatment' });
+        await db.saveDonor({ ...donor, assignmentStatus: 'in_treatment' });
     }
 
     alert('המשימה נשלחה בהצלחה! הנציגים יראו אותה כעת בפורטל האישי.');
@@ -219,16 +225,16 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
         <div className="w-[380px] flex flex-col gap-4 overflow-y-auto pr-1 scroll-hide shrink-0">
           <div className="bg-white rounded-[30px] border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex justify-between items-center border-b pb-3">
-               <h2 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2"><Plus size={14} className="text-blue-600"/> הגדרות משימה</h2>
-               <div className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[9px] font-black shadow-sm italic">
-                  <Activity size={10}/> {purimDonors.length} זמינים
-               </div>
+                <h2 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2"><Plus size={14} className="text-blue-600"/> הגדרות משימה</h2>
+                <div className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[9px] font-black shadow-sm italic">
+                   <Activity size={10}/> {purimDonors.length} זמינים
+                </div>
             </div>
             
             <div className="space-y-4 animate-in fade-in duration-500">
-               <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 mr-1 uppercase">שם המשימה</label><input value={activeTab === 'calls' ? callForm.name : (activeTab === 'patrols' ? 'סיירת' : pathForm.name)} onChange={e => activeTab === 'calls' ? setCallForm({...callForm, name: e.target.value}) : setPathForm({...pathForm, name: e.target.value})} placeholder="סבב עבודה..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:bg-white transition-all" /></div>
-               
-               <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 mr-1 uppercase">שם המשימה</label><input value={activeTab === 'calls' ? callForm.name : (activeTab === 'patrols' ? 'סיירת' : pathForm.name)} onChange={e => activeTab === 'calls' ? setCallForm({...callForm, name: e.target.value}) : setPathForm({...pathForm, name: e.target.value})} placeholder="סבב עבודה..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:bg-white transition-all" /></div>
+                
+                <div className="grid grid-cols-2 gap-3">
                   {activeTab !== 'calls' && (
                     <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 mr-1 uppercase">עיר (גוגל)</label><input ref={cityInputRef} value={activeTab === 'patrols' ? patrolForm.city : pathForm.city} onChange={e => activeTab === 'patrols' ? setPatrolForm({...patrolForm, city: e.target.value}) : setPathForm({...pathForm, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" /></div>
                   )}
@@ -243,16 +249,16 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       </div>
                     </div>
                   )}
-               </div>
+                </div>
 
-               {activeTab === 'patrols' && (
+                {activeTab === 'patrols' && (
                  <div className="space-y-3 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 animate-in zoom-in-95">
                     <div className="flex justify-between items-center"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">מרחק מקסימלי (מטרים)</label><span className="text-[10px] font-black text-blue-600">{patrolForm.maxDistance} מ'</span></div>
                     <input type="range" min="100" max="2000" step="50" value={patrolForm.maxDistance} onChange={e => setPatrolForm({...patrolForm, maxDistance: Number(e.target.value)})} className="w-full h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                  </div>
                )}
 
-               <div className="pt-4 border-t space-y-3">
+                <div className="pt-4 border-t space-y-3">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1 block">בחירת נציגים (חיפוש)</label>
                   <div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={14}/><input type="text" placeholder="חפש נציג..." value={repSearch} onChange={e => setRepSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 py-2.5 text-[10px] font-bold outline-none" /></div>
                   <div className="max-h-36 overflow-y-auto mt-2 space-y-1 scroll-hide pr-1">
@@ -263,9 +269,9 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       </button>
                     ))}
                   </div>
-               </div>
+                </div>
 
-               <button type="button" onClick={() => setShowCustomDonors(true)} className="w-full py-3.5 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black border border-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"><ListChecks size={16}/> בחירת תורמים ידנית</button>
+                <button type="button" onClick={() => setShowCustomDonors(true)} className="w-full py-3.5 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black border border-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"><ListChecks size={16}/> בחירת תורמים ידנית</button>
             </div>
 
             <button onClick={finalizeTask} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-black uppercase tracking-widest">
@@ -319,27 +325,55 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                     </div>
                     <div className="w-[380px] overflow-y-auto p-6 bg-white scroll-hide border-r shadow-2xl z-20 text-right">
                        <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] border-b pb-4 mb-6 flex items-center gap-2"><Navigation size={14}/> הוראות ניווט והגעה מדויקות</h3>
-                       <div className="space-y-6">
+                       <div className="space-y-8">
                          {activeTaskDonors.map((donor, idx) => (
                            <div key={donor.id} className="animate-fade-in">
                              <div className="flex gap-4 group">
                                <div className="flex flex-col items-center shrink-0">
                                  <div className="w-8 h-8 rounded-xl bg-slate-900 text-white text-[11px] font-black flex items-center justify-center shadow-lg group-hover:bg-blue-600 transition-colors">{idx + 1}</div>
-                                 {idx < activeTaskDonors.length - 1 && <div className="w-0.5 flex-1 bg-slate-100 my-2"></div>}
+                                 {idx < activeTaskDonors.length - 1 && <div className="w-0.5 flex-1 bg-slate-200 my-2"></div>}
                                </div>
                                <div className="pb-2 min-w-0 flex-1">
-                                 <p className="text-[13px] font-black text-slate-900 truncate leading-tight">{donor.firstName} {donor.lastName}</p>
+                                 <p className="text-[14px] font-black text-slate-900 truncate leading-tight">{donor.firstName} {donor.lastName}</p>
                                  <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{donor.street} {donor.building}, {donor.city}</p>
                                  
-                                 {/* הוראות גוגל מפורטות בין הנקודות - Turn-by-Turn */}
+                                 {/* הוראות גוגל מפורטות Turn-by-Turn בין הנקודות */}
                                  {routeLegs[idx] && (
-                                   <div className="mt-4 space-y-3">
-                                      <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black border border-blue-100">
-                                         <Clock size={12}/> {routeLegs[idx].duration.text} ({routeLegs[idx].distance.text})
+                                   <div className="mt-4 space-y-4">
+                                      <div className="flex items-center justify-between px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black border border-blue-100">
+                                         <div className="flex items-center gap-2"><Clock size={12}/> {routeLegs[idx].duration.text}</div>
+                                         <div className="flex items-center gap-2"><ArrowRight size={12}/> {routeLegs[idx].distance.text}</div>
                                       </div>
-                                      <div className="space-y-2 pr-2 border-r-2 border-slate-50">
+
+                                      <div className="space-y-3 pr-3 border-r-2 border-slate-100">
                                           {routeLegs[idx].steps.map((step: any, sIdx: number) => (
-                                           <div key={sIdx} className="text-[9px] text-slate-500 font-medium leading-relaxed bg-slate-50/50 p-2 rounded-lg" dangerouslySetInnerHTML={{ __html: step.instructions }} />
+                                           <div key={sIdx} className="relative">
+                                             {/* טיפול בתצוגת תחבורה ציבורית - מספרי קווים ותחנות */}
+                                             {step.transit ? (
+                                               <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 space-y-2">
+                                                  <div className="flex items-center gap-2 text-emerald-700 font-black text-[11px]">
+                                                    <Bus size={14} /> קו {step.transit.line.short_name}
+                                                  </div>
+                                                  <div className="text-[10px] text-emerald-800 font-bold leading-relaxed">
+                                                    עלה בתחנת {step.transit.departure_stop.name} <br/>
+                                                    רד בתחנת {step.transit.arrival_stop.name} ({step.transit.num_stops} תחנות)
+                                                  </div>
+                                               </div>
+                                             ) : (
+                                               <div className="flex items-start gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                                                  {step.travel_mode === 'WALKING' ? <Footprints size={12} className="mt-0.5 text-slate-400" /> : <Car size={12} className="mt-0.5 text-slate-400" />}
+                                                  <div 
+                                                    className="text-[10px] text-slate-600 font-bold leading-relaxed" 
+                                                    dangerouslySetInnerHTML={{ __html: step.instructions }} 
+                                                  />
+                                               </div>
+                                             )}
+                                             
+                                             {/* הצגת מרחק לכל שלב קטן */}
+                                             <div className="text-[8px] text-slate-400 font-black mt-1 mr-7">
+                                               {step.distance.text} · {step.duration.text}
+                                             </div>
+                                           </div>
                                           ))}
                                       </div>
                                    </div>
