@@ -335,7 +335,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                             <Sparkles className="text-emerald-600" size={24} />
                             <div>
                               <p className="text-xs font-black text-emerald-800 dark:text-emerald-400">הגעת לפסגה!</p>
-                              <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות בקמפיין זה.</p>
+                              <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות שהוגדרו בקמפיין.</p>
                             </div>
                         </div>
                       )
@@ -375,11 +375,11 @@ const RepPortal: React.FC<RepPortalProps> = ({
                           const isRepEligible = liveTotalRaised >= lotteryThreshold;
 
                           return (
-                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isRepEligible ? 'bg-orange-50/30 dark:bg-orange-900/5 border-orange-100' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
+                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isRepEligible ? 'bg-emerald-50/30 dark:bg-emerald-900/5 border-emerald-100/50' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
                                <div className="text-right">
                                   <p className="text-[13px] font-black text-slate-800 dark:text-white leading-none mb-1.5">{lottery.title}</p>
                                   <p className={`text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5 ${isRepEligible ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                     <Star size={10} className={isRepEligible ? "text-orange-500" : "text-slate-300"} fill={isRepEligible ? "currentColor" : "none"} /> פרס: {lottery.prize}
+                                     <Star size={10} fill={isRepEligible ? "currentColor" : "none"} /> פרס: {lottery.prize}
                                   </p>
                                </div>
                                {isRepEligible ? (
@@ -458,26 +458,27 @@ const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
                 <div className="space-y-4">
                   {(myCallList?.donors || []).map(donor => {
-                      const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated' || donor.treatmentStatus === 'not_home' || donor.treatmentStatus === 'come_later';
+                      const liveDonor = donors.find(d => d.id === donor.id) || donor;
+                      const isHandled = liveDonor.treatmentStatus === 'donated' || liveDonor.treatmentStatus === 'not_donated' || liveDonor.treatmentStatus === 'not_home' || liveDonor.treatmentStatus === 'come_later';
                       return (
                       <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
-                          <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-14 h-14 rounded-[22px] flex items-center justify-center shrink-0 transition-all ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 group-hover:bg-orange-600 group-hover:text-white cursor-pointer'}`}>
+                          <div onClick={!isHandled ? () => handleReportVisit(liveDonor) : undefined} className={`w-14 h-14 rounded-[22px] flex items-center justify-center shrink-0 transition-all ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 group-hover:bg-orange-600 group-hover:text-white cursor-pointer'}`}>
                             {isHandled ? <Check size={24}/> : <ClipboardEdit size={24}/>}
                           </div>
-                          <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(donor) : undefined}>
-                              <h4 className="text-sm font-black truncate">{donor.firstName} {donor.lastName}</h4>
-                              <p className="text-[10px] text-slate-400 font-bold tabular-nums mt-0.5">{donor.phone}</p>
+                          <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(liveDonor) : undefined}>
+                              <h4 className="text-sm font-black truncate">{liveDonor.firstName} {liveDonor.lastName}</h4>
+                              <p className="text-[10px] text-slate-400 font-bold tabular-nums mt-0.5">{liveDonor.phone}</p>
                           </div>
                           <div className="flex gap-2 shrink-0">
-                              <a href={`tel:${donor.phone}`} className="p-3.5 bg-orange-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
+                              <a href={`tel:${liveDonor.phone}`} className="p-3.5 bg-orange-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
                                 <Phone size={20}/>
                               </a>
                               {isHandled ? (
                                 <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl text-[10px] font-black uppercase shadow-sm flex items-center justify-center min-w-[80px]">
-                                   {getStatusLabel(donor.treatmentStatus)}
+                                   {getStatusLabel(liveDonor.treatmentStatus)}
                                 </div>
                               ) : (
-                                <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
+                                <button onClick={() => handleReportVisit(liveDonor)} className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
                                   <PlusCircle size={20}/>
                                 </button>
                               )}
@@ -517,23 +518,24 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
               <div className="space-y-4">
                 {(myActivePath?.addresses || []).map((donor, idx) => {
-                   const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated' || donor.treatmentStatus === 'not_home' || donor.treatmentStatus === 'come_later';
+                   const liveDonor = donors.find(d => d.id === donor.id) || donor;
+                   const isHandled = liveDonor.treatmentStatus === 'donated' || liveDonor.treatmentStatus === 'not_donated' || liveDonor.treatmentStatus === 'not_home' || liveDonor.treatmentStatus === 'come_later';
                    return (
                    <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
-                      <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white cursor-pointer'}`}>
+                      <div onClick={!isHandled ? () => handleReportVisit(liveDonor) : undefined} className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white cursor-pointer'}`}>
                         {isHandled ? <Check size={20}/> : idx + 1}
                       </div>
-                      <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(donor) : undefined}>
-                         <h4 className="text-[14px] font-black truncate">{donor.firstName} {donor.lastName}</h4>
-                         <p className="text-[10px] text-slate-400 font-bold truncate flex items-center gap-1 mt-0.5 justify-end"><MapPin size={10}/> {(donor.street || '')} {(donor.building || '')}</p>
+                      <div className="flex-1 min-w-0 text-right" onClick={!isHandled ? () => handleReportVisit(liveDonor) : undefined}>
+                         <h4 className="text-[14px] font-black truncate">{liveDonor.firstName} {liveDonor.lastName}</h4>
+                         <p className="text-[10px] text-slate-400 font-bold truncate flex items-center gap-1 mt-0.5 justify-end"><MapPin size={10}/> {(liveDonor.street || '')} {(liveDonor.building || '')}</p>
                       </div>
                       
                       {isHandled ? (
                         <div className="px-5 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl text-[10px] font-black uppercase shadow-sm flex items-center justify-center min-w-[90px]">
-                           {getStatusLabel(donor.treatmentStatus)}
+                           {getStatusLabel(liveDonor.treatmentStatus)}
                         </div>
                       ) : (
-                        <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
+                        <button onClick={() => handleReportVisit(liveDonor)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
                           <PlusCircle size={24}/>
                         </button>
                       )}
