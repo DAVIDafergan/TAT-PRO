@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Donor, Path, CallList, Representative, Patrol, DonorPreference, ConnectionType } from '../types';
+import { Donor, Path, CallList, Representative, Patrol, DonorPreference, ConnectionType, Donation } from '../types';
 import { 
   Search, Plus, X, Navigation, Phone, Check, User, MapPin, 
   Trash2, MessageCircle, Home, Zap, Building2, Hash, 
   Layers, Edit2, CheckCircle2, ChevronLeft, Type, ArrowUpDown, Users,
-  UserMinus, ClipboardList, Clock, Activity, Star, Download, Upload, FileText, AlertTriangle, Save
+  UserMinus, ClipboardList, Clock, Activity, Star, Download, Upload, FileText, AlertTriangle, Save, Filter
 } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import * as XLSX from 'xlsx';
@@ -12,13 +12,14 @@ import * as XLSX from 'xlsx';
 interface CRMPageProps {
   donors: Donor[];
   setDonors: React.Dispatch<React.SetStateAction<Donor[]>>;
+  donations: Donation[];
   reps: Representative[];
   paths: Path[];
   callLists: CallList[];
   activeCampaignId: string;
 }
 
-const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], paths = [], callLists = [], activeCampaignId }) => {
+const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [], reps = [], paths = [], callLists = [], activeCampaignId }) => {
   const [activeFilter, setActiveFilter] = useState<DonorPreference | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDonor, setSelectedDonor] = useState<any | null>(null);
@@ -27,6 +28,12 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
   const [showImportModal, setShowImportModal] = useState(false);
   const [importClassification, setImportClassification] = useState<DonorPreference>('general_visit');
   
+  // מסננים חכמים חדשים
+  const [cityFilter, setCityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [connectionFilter, setConnectionFilter] = useState('all');
+  const [potentialFilter, setPotentialFilter] = useState('all');
+
   const [repSearchTerm, setRepSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'firstName' | 'city' | 'connectionType'>('firstName');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -46,7 +53,6 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
   const editCityRef = useRef<HTMLInputElement>(null);
   const editStreetRef = useRef<HTMLInputElement>(null);
 
-  // פונקציית עזר לבחירת סיווגים (תוקן)
   const togglePreference = (pref: DonorPreference) => {
     setNewDonor((prev: any) => {
       const current = prev.preferences || [];
@@ -57,7 +63,6 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     });
   };
 
-  // אתחול Autocomplete להוספת תורם (עודכן עם רחוב)
   useEffect(() => {
     if (!placesLib || !crmCityRef.current || !showSingleDonorModal) return;
     
@@ -76,7 +81,6 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     }
   }, [placesLib, showSingleDonorModal]);
 
-  // אתחול Autocomplete לעריכת תורם (עודכן עם רחוב)
   useEffect(() => {
     if (!placesLib || !editCityRef.current || !isEditing) return;
     
@@ -95,13 +99,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     }
   }, [placesLib, isEditing]);
 
-  const getConnectionLabel = (type: ConnectionType, detail?: string) => {
-    const labels: any = { alumnus: 'בוגר', parent: 'הורה', staff_family: 'משפחת צוות', student_family: 'משפחת תלמיד', general: 'תורם כללי / ידיד', other: 'אחר' };
+  const getConnectionLabel = (type: ConnectionType) => {
+    const labels: Record<string, string> = { alumnus: 'בוגר', parent: 'הורה', staff_family: 'משפחת צוות', student_family: 'משפחת תלמיד', general: 'תורם כללי / ידיד', other: 'אחר' };
     return labels[type] || 'כללי';
   };
 
   const getStatusLabel = (status: string) => {
-    const statuses: Record<string, string> = { donated: '✅ תרם', not_donated: '❌ לא תרם', in_treatment: '⏳ בטיפול', available: '⚪ פנוי', callback: '📞 חזור אליו' };
+    const statuses: Record<string, string> = { donated: '✅ תרם', not_donated: '❌ לא תרם', in_treatment: '⏳ בטיפול', available: '⚪ פנוי', callback: '📞 חזור אליו', not_home: '🏠 לא היה בבית', come_later: '⏳ לחזור בהמשך' };
     return statuses[status] || 'פנוי';
   };
 
@@ -112,19 +116,38 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     return Array.from(assignedRepIds).map(id => reps.find(r => r.id === id)).filter(Boolean) as Representative[];
   };
 
+  // שליפת נתוני תרומה בזמן אמת לתורם
+  const getDonorDonationInfo = (phone: string) => {
+    const donorDonations = donations.filter(d => d.donorPhone === phone && d.status === 'confirmed');
+    const total = donorDonations.reduce((sum, d) => sum + d.amount, 0);
+    return { total, count: donorDonations.length };
+  };
+
+  const cities = useMemo(() => Array.from(new Set(donors.map(d => d.city))).filter(Boolean), [donors]);
+
   const sortedAndFilteredDonors = useMemo(() => {
     let result = (donors || []).filter(d => {
+      const donorDonation = getDonorDonationInfo(d.phone);
+      // אם תרם - הסטטוס הופך ל"בטיפול" באופן אוטומטי לצורך התצוגה
+      const currentStatus = donorDonation.total > 0 ? 'donated' : d.treatmentStatus;
+
       const matchesPref = activeFilter === 'all' || d.preferences?.includes(activeFilter as DonorPreference);
-      const searchString = `${d.firstName || ''} ${d.lastName || ''} ${d.phone || ''} ${d.city || ''} ${d.street || ''}`.toLowerCase();
-      return matchesPref && searchString.includes(searchTerm.toLowerCase());
+      const matchesSearch = `${d.firstName || ''} ${d.lastName || ''} ${d.phone || ''} ${d.city || ''} ${d.street || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCity = cityFilter === 'all' || d.city === cityFilter;
+      const matchesStatus = statusFilter === 'all' || currentStatus === statusFilter;
+      const matchesConn = connectionFilter === 'all' || d.connectionType === connectionFilter;
+      const matchesPot = potentialFilter === 'all' || d.potentialRank === Number(potentialFilter);
+
+      return matchesPref && matchesSearch && matchesCity && matchesStatus && matchesConn && matchesPot;
     });
+
     result.sort((a, b) => {
       let valA = a[sortBy] || ''; let valB = b[sortBy] || '';
       if (sortOrder === 'asc') return valA.toString().localeCompare(valB.toString());
       return valB.toString().localeCompare(valA.toString());
     });
     return result;
-  }, [donors, activeFilter, searchTerm, sortBy, sortOrder]);
+  }, [donors, activeFilter, searchTerm, sortBy, sortOrder, cityFilter, statusFilter, connectionFilter, potentialFilter, donations]);
 
   const filteredRepsInModal = useMemo(() => reps.filter(r => r.name?.toLowerCase().includes(repSearchTerm.toLowerCase())), [reps, repSearchTerm]);
 
@@ -162,7 +185,6 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
     setIsEditing(false);
   };
 
-  // פונקציות אקסל
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(donors);
     const wb = XLSX.utils.book_new();
@@ -193,13 +215,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
         building: row.building || '',
         preferences: [importClassification],
         status: 'potential',
-        assignmentStatus: 'available', // סטטוס פנוי אוטומטי בייבוא
+        assignmentStatus: 'available',
         campaignId: activeCampaignId,
         notes: row.notes || ''
       }));
       setDonors(prev => [...imported, ...prev]);
       setShowImportModal(false);
-      alert(`${imported.length} תורמים הועלו בהצלחה כ"פנויים". גוגל מפות יאמת את המיקום בהפעלת משימה.`);
+      alert(`${imported.length} תורמים הועלו בהצלחה. גוגל מפות יאמת את המיקום בהפעלת משימה.`);
     };
     reader.readAsBinaryString(file);
   };
@@ -219,22 +241,70 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
         </div>
       </div>
 
-      <div className="flex bg-white rounded-2xl border border-slate-200 p-1 mb-6 shadow-sm w-fit overflow-hidden">
-         {['all', 'telephonic', 'general_visit', 'purim_day'].map(f => (
-           <button key={f} onClick={() => setActiveFilter(f as any)} className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${activeFilter === f ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>
-             {f === 'all' ? 'הכל' : f === 'telephonic' ? 'טלפוני' : f === 'general_visit' ? 'ביקור בית' : 'יום פורים'}
-           </button>
-         ))}
+      {/* שורת חיפוש ומסננים חכמים */}
+      <div className="bg-white p-6 rounded-[30px] border border-slate-200 shadow-sm mb-8 space-y-4">
+          <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                  <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="חיפוש חופשי לפי שם, טלפון או כתובת..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl pr-12 pl-4 py-3 text-sm font-bold outline-none focus:bg-white transition-all" />
+              </div>
+              <div className="flex bg-slate-50 rounded-2xl p-1 border border-slate-100">
+                  {['all', 'telephonic', 'general_visit', 'purim_day'].map(f => (
+                    <button key={f} onClick={() => setActiveFilter(f as any)} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all ${activeFilter === f ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {f === 'all' ? 'הכל' : f === 'telephonic' ? 'טלפוני' : f === 'general_visit' ? 'ביקור' : 'פורים'}
+                    </button>
+                  ))}
+              </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-slate-50">
+              <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase mr-1">סנן לפי עיר</label>
+                  <select value={cityFilter} onChange={e => setCityFilter(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold outline-none cursor-pointer">
+                      <option value="all">כל הערים</option>
+                      {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+              </div>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase mr-1">סטטוס טיפול</label>
+                  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold outline-none cursor-pointer">
+                      <option value="all">כל הסטטוסים</option>
+                      <option value="available">פנוי</option>
+                      <option value="donated">תרם</option>
+                      <option value="not_donated">לא תרם</option>
+                      <option value="not_home">לא היה בבית</option>
+                      <option value="callback">חזור אליו</option>
+                  </select>
+              </div>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase mr-1">קשר לישיבה</label>
+                  <select value={connectionFilter} onChange={e => setConnectionFilter(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold outline-none cursor-pointer">
+                      <option value="all">כל הקשרים</option>
+                      <option value="alumnus">בוגר</option>
+                      <option value="parent">הורה</option>
+                      <option value="student_family">משפחת תלמיד</option>
+                      <option value="general">ידיד / כללי</option>
+                  </select>
+              </div>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase mr-1">דירוג פוטנציאל</label>
+                  <select value={potentialFilter} onChange={e => setPotentialFilter(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold outline-none cursor-pointer">
+                      <option value="all">כל הדירוגים</option>
+                      <option value="5">⭐⭐⭐⭐⭐ (גבוה)</option>
+                      <option value="4">⭐⭐⭐⭐</option>
+                      <option value="3">⭐⭐⭐</option>
+                      <option value="2">⭐⭐</option>
+                      <option value="1">⭐ (נמוך)</option>
+                  </select>
+              </div>
+          </div>
       </div>
 
       <div className="grid grid-cols-12 gap-8">
         <div className={selectedDonor ? 'col-span-12 lg:col-span-8' : 'col-span-12'}>
             <div className="bg-white rounded-[35px] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
-                <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center">
-                    <div className="relative flex-1 w-full">
-                        <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="חפש תורם..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl pr-12 pl-4 py-3 text-sm font-bold outline-none focus:bg-white transition-all" />
-                    </div>
+                <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2"><ClipboardList size={18} className="text-blue-600"/> רשימת תורמים ({sortedAndFilteredDonors.length})</h3>
                     <div className="flex gap-2">
                        {['firstName', 'city', 'connectionType'].map((f: any) => (
                          <button key={f} onClick={() => toggleSort(f)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-2 ${sortBy === f ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white border-slate-100 text-slate-400'}`}>
@@ -246,18 +316,28 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
                 <div className="overflow-x-auto scroll-hide">
                   <table className="w-full text-right">
                       <thead className="bg-slate-50/50 text-slate-400 text-[9px] font-black uppercase border-b border-slate-100">
-                        <tr><th className="px-8 py-5">תורם</th><th className="px-8 py-5">קשר</th><th className="px-8 py-5">מיקום</th><th className="px-8 py-5 text-center">נציג</th><th className="px-8 py-5 text-center">סיווג</th></tr>
+                        <tr><th className="px-8 py-5">תורם</th><th className="px-8 py-5">קשר</th><th className="px-8 py-5">מיקום</th><th className="px-8 py-5 text-center">נציג</th><th className="px-8 py-5 text-center">סטטוס</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                          {sortedAndFilteredDonors.map(donor => (
-                             <tr key={donor.id} onClick={() => {setSelectedDonor(donor); setEditData(donor); setIsEditing(false);}} className={`hover:bg-blue-50/30 cursor-pointer transition-all ${selectedDonor?.id === donor.id ? 'bg-blue-50/50' : ''}`}>
-                                <td className="px-8 py-5"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-400">{(donor.firstName || 'T')[0]}</div><div><p className="font-black text-slate-900 text-sm">{donor.firstName} {donor.lastName}</p><p className="text-[10px] text-slate-400 font-bold tabular-nums">{donor.phone}</p></div></div></td>
-                                <td className="px-8 py-5"><span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-black uppercase">{getConnectionLabel(donor.connectionType)}</span></td>
-                                <td className="px-8 py-5"><div><p className="text-xs font-bold text-slate-900">{donor.city}</p><p className="text-[9px] text-slate-400 font-bold">{donor.street} {donor.building}</p></div></td>
-                                <td className="px-8 py-5 text-center"><div className="flex justify-center -space-x-1 rtl:space-x-reverse">{getAssignedRepsForDonor(donor.id, donor.assignedRepIds).map((r, i) => (<div key={i} className="w-6 h-6 rounded-lg bg-blue-600 border-2 border-white flex items-center justify-center text-[9px] font-black text-white shadow-sm" title={r.name}>{r.name[0]}</div>))}</div></td>
-                                <td className="px-8 py-5 text-center"><div className="flex justify-center gap-1">{donor.preferences?.map((p: any) => (<div key={p} className={`w-5 h-5 rounded-full flex items-center justify-center text-white ${p === 'telephonic' ? 'bg-orange-400' : p === 'purim_day' ? 'bg-indigo-500' : 'bg-blue-500'}`}>{p === 'telephonic' ? <Phone size={10}/> : p === 'purim_day' ? <Zap size={10}/> : <Home size={10}/>}</div>))}</div></td>
-                             </tr>
-                          ))}
+                          {sortedAndFilteredDonors.map(donor => {
+                              const donation = getDonorDonationInfo(donor.phone);
+                              const currentStatus = donation.total > 0 ? 'donated' : donor.treatmentStatus;
+                              return (
+                               <tr key={donor.id} onClick={() => {setSelectedDonor(donor); setEditData(donor); setIsEditing(false);}} className={`hover:bg-blue-50/30 cursor-pointer transition-all ${selectedDonor?.id === donor.id ? 'bg-blue-50/50' : ''}`}>
+                                 <td className="px-8 py-5"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-400">{(donor.firstName || 'T')[0]}</div><div><p className="font-black text-slate-900 text-sm">{donor.firstName} {donor.lastName}</p><p className="text-[10px] text-slate-400 font-bold tabular-nums">{donor.phone}</p></div></div></td>
+                                 <td className="px-8 py-5"><span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-black uppercase">{getConnectionLabel(donor.connectionType)}</span></td>
+                                 <td className="px-8 py-5"><div><p className="text-xs font-bold text-slate-900">{donor.city}</p><p className="text-[9px] text-slate-400 font-bold">{donor.street} {donor.building}</p></div></td>
+                                 <td className="px-8 py-5 text-center"><div className="flex justify-center -space-x-1 rtl:space-x-reverse">{getAssignedRepsForDonor(donor.id, donor.assignedRepIds).map((r, i) => (<div key={i} className="w-6 h-6 rounded-lg bg-blue-600 border-2 border-white flex items-center justify-center text-[9px] font-black text-white shadow-sm" title={r.name}>{r.name[0]}</div>))}</div></td>
+                                 <td className="px-8 py-5 text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black whitespace-nowrap ${currentStatus === 'donated' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-500'}`}>
+                                            {getStatusLabel(currentStatus)}
+                                        </span>
+                                        {donation.total > 0 && <span className="text-[10px] font-black text-emerald-600 tabular-nums">₪{donation.total.toLocaleString()}</span>}
+                                     </div>
+                                 </td>
+                               </tr>
+                          )})}
                       </tbody>
                   </table>
                 </div>
@@ -266,50 +346,121 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, reps = [], pa
 
         {selectedDonor && (
             <div className="col-span-12 lg:col-span-4 animate-fade-in">
-                <div className="bg-white rounded-[30px] border border-slate-200 shadow-xl overflow-hidden sticky top-8">
-                    <div className="p-5 bg-slate-900 text-white relative overflow-hidden">
+                <div className="bg-white rounded-[35px] border border-slate-200 shadow-xl overflow-hidden sticky top-8">
+                    {/* כרטיס תורם מלא - צד שמאל/תחתון */}
+                    <div className="p-6 bg-slate-900 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full -mr-16 -mt-16"></div>
                         <div className="flex gap-2 absolute top-4 left-4 z-20">
-                           <button onClick={() => handleDeleteDonor(selectedDonor.id)} className="p-1.5 bg-red-500/20 text-red-500 rounded-full hover:bg-red-50 hover:text-white transition-all"><Trash2 size={14}/></button>
-                           <button onClick={() => setSelectedDonor(null)} className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-all"><X size={14}/></button>
+                            <button onClick={() => handleDeleteDonor(selectedDonor.id)} className="p-2 bg-red-500/20 text-red-400 rounded-full hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
+                            <button onClick={() => setSelectedDonor(null)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-all"><X size={14}/></button>
                         </div>
-                        <div className="flex justify-between items-start relative z-10 mb-4">
-                            <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-2xl font-black shadow-xl">{(selectedDonor.firstName || 'T')[0]}</div>
-                            <div className="flex flex-col items-end gap-1">
-                               <span className="px-2 py-0.5 bg-white/10 rounded-full text-[8px] font-black uppercase tracking-widest border border-white/10">{getConnectionLabel(selectedDonor.connectionType)}</span>
-                               <div className="flex gap-0.5 mt-1">{[1,2,3,4,5].map(s => <Star key={s} size={10} fill={s <= (selectedDonor.potentialRank || 0) ? "#fbbf24" : "transparent"} className={s <= (selectedDonor.potentialRank || 0) ? "text-yellow-400" : "text-white/20"} />)}</div>
+                        <div className="flex justify-between items-start relative z-10 mb-6">
+                            <div className="w-16 h-16 bg-blue-600 rounded-[22px] flex items-center justify-center text-3xl font-black shadow-2xl border-2 border-white/10">{(selectedDonor.firstName || 'T')[0]}</div>
+                            <div className="flex flex-col items-end gap-1.5">
+                               <span className="px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/10">{getConnectionLabel(selectedDonor.connectionType)}</span>
+                               <div className="flex gap-0.5 mt-1">{[1,2,3,4,5].map(s => <Star key={s} size={12} fill={s <= (selectedDonor.potentialRank || 0) ? "#fbbf24" : "transparent"} className={s <= (selectedDonor.potentialRank || 0) ? "text-yellow-400" : "text-white/20"} />)}</div>
                             </div>
                         </div>
-                        <h2 className="text-xl font-black mb-0.5 relative z-10">{selectedDonor.firstName} {selectedDonor.lastName}</h2>
-                        <p className="text-[10px] text-slate-400 font-bold tabular-nums relative z-10">{selectedDonor.phone}</p>
+                        <h2 className="text-2xl font-black mb-1 relative z-10">{selectedDonor.firstName} {selectedDonor.lastName}</h2>
+                        <div className="flex items-center gap-2 text-slate-400 mb-2 relative z-10">
+                            <Phone size={14}/>
+                            <span className="text-sm font-bold tabular-nums">{selectedDonor.phone}</span>
+                        </div>
                     </div>
 
-                    <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto scroll-hide">
+                    <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto scroll-hide">
                         {isEditing ? (
-                          <div className="space-y-4 animate-fade-in">
-                             <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">שם פרטי</label><input value={editData.firstName} onChange={e => setEditData({...editData, firstName: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
-                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">שם משפחה</label><input value={editData.lastName} onChange={e => setEditData({...editData, lastName: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
+                          <div className="space-y-5 animate-fade-in">
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">שם פרטי</label><input value={editData.firstName} onChange={e => setEditData({...editData, firstName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">שם משפחה</label><input value={editData.lastName} onChange={e => setEditData({...editData, lastName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" /></div>
                              </div>
-                             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">טלפון</label><input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
-                             <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">עיר (גוגל)</label><input ref={editCityRef} value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
-                                <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">רחוב</label><input ref={editStreetRef} value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold" /></div>
+                             <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">טלפון</label><input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" /></div>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">עיר</label><input ref={editCityRef} value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">רחוב</label><input ref={editStreetRef} value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
                              </div>
-                             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">הערות</label><textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="w-full bg-slate-50 border p-2.5 rounded-xl text-xs font-bold h-20" /></div>
-                             <button onClick={handleUpdateDonor} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"><Save size={14}/> שמור את כל השינויים</button>
+                             <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">בניין</label><input value={editData.building} onChange={e => setEditData({...editData, building: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">קומה</label><input value={editData.floor} onChange={e => setEditData({...editData, floor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">דירה</label><input value={editData.apartment} onChange={e => setEditData({...editData, apartment: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
+                             </div>
+                             <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">הערות</label><textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold h-24 outline-none focus:ring-2 ring-blue-100 resize-none" /></div>
+                             <button onClick={handleUpdateDonor} className="w-full py-4 bg-emerald-600 text-white rounded-[20px] font-black text-sm flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"><Save size={18}/> שמור את כל השינויים</button>
                           </div>
                         ) : (
                           <>
-                            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="flex items-center gap-2"><Activity size={14} className="text-blue-600"/><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">סטטוס טיפול</span></div>
-                                <span className="text-xs font-black text-slate-900">{getStatusLabel(selectedDonor.treatmentStatus)}</span>
+                            {/* הצגת כל המידע ללא יוצא מן הכלל */}
+                            <div className="space-y-4">
+                               <div className="flex items-center justify-between p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+                                   <div className="flex items-center gap-2"><Activity size={16} className="text-blue-600"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">מצב נוכחי</span></div>
+                                   <span className="text-xs font-black text-slate-900">{getStatusLabel(getDonorDonationInfo(selectedDonor.phone).total > 0 ? 'donated' : selectedDonor.treatmentStatus)}</span>
+                               </div>
+
+                               <div className="p-5 bg-slate-50 rounded-[24px] border border-slate-100 space-y-4">
+                                   <div className="flex items-start gap-4">
+                                      <MapPin size={18} className="text-slate-400 mt-1"/>
+                                      <div>
+                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">כתובת מלאה</p>
+                                         <p className="text-sm font-bold text-slate-900">{selectedDonor.city}, {selectedDonor.street} {selectedDonor.building}</p>
+                                         <p className="text-xs text-slate-500 font-medium">קומה {selectedDonor.floor || '0'}, דירה {selectedDonor.apartment || '0'}</p>
+                                         {selectedDonor.addressNotes && <p className="text-[10px] text-blue-600 font-bold mt-1">📍 {selectedDonor.addressNotes}</p>}
+                                      </div>
+                                   </div>
+                                   <div className="h-px bg-slate-200"></div>
+                                   <div className="flex items-start gap-4">
+                                      <Users size={18} className="text-slate-400 mt-1"/>
+                                      <div>
+                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">שיוך ופירוט קשר</p>
+                                         <p className="text-sm font-bold text-slate-900">{getConnectionLabel(selectedDonor.connectionType)}</p>
+                                         {selectedDonor.connectionDetail && <p className="text-xs text-slate-500 font-medium">{selectedDonor.connectionDetail}</p>}
+                                      </div>
+                                   </div>
+                                   {getDonorDonationInfo(selectedDonor.phone).total > 0 && (
+                                       <>
+                                        <div className="h-px bg-slate-200"></div>
+                                        <div className="flex items-start gap-4">
+                                            <CheckCircle2 size={18} className="text-emerald-500 mt-1"/>
+                                            <div>
+                                                <p className="text-[9px] font-black text-emerald-600 uppercase mb-0.5">נתוני תרומות</p>
+                                                <p className="text-sm font-black text-slate-900">₪{getDonorDonationInfo(selectedDonor.phone).total.toLocaleString()}</p>
+                                                <p className="text-[10px] text-emerald-600 font-bold italic">מתוך {getDonorDonationInfo(selectedDonor.phone).count} תרומות מאושרות</p>
+                                            </div>
+                                        </div>
+                                       </>
+                                   )}
+                               </div>
+
+                               {selectedDonor.notes && (
+                                 <div className="space-y-2">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">הערות תורם</p>
+                                    <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100 flex gap-3 italic">
+                                       <ClipboardList size={16} className="text-amber-500 shrink-0" />
+                                       <p className="text-[12px] font-bold text-amber-900 leading-relaxed">"{selectedDonor.notes}"</p>
+                                    </div>
+                                 </div>
+                               )}
+
+                               <div className="space-y-3">
+                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">נציגים משוייכים</p>
+                                   <div className="flex flex-wrap gap-2">
+                                      {getAssignedRepsForDonor(selectedDonor.id, selectedDonor.assignedRepIds).length > 0 ? (
+                                        getAssignedRepsForDonor(selectedDonor.id, selectedDonor.assignedRepIds).map(r => (
+                                          <div key={r.id} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                             <div className="w-5 h-5 bg-blue-600 rounded-lg text-[10px] text-white flex items-center justify-center font-black">{r.name[0]}</div>
+                                             <span className="text-xs font-bold text-slate-700">{r.name}</span>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <p className="text-[10px] text-slate-400 italic pr-2">אין נציגים משוייכים כרגע</p>
+                                      )}
+                                   </div>
+                               </div>
+
+                               <button onClick={() => {setEditData(selectedDonor); setIsEditing(true);}} className="w-full py-4 bg-slate-900 text-white rounded-[22px] font-black text-xs active:scale-95 shadow-lg flex items-center justify-center gap-2 mt-6 hover:bg-black transition-all">
+                                   <Edit2 size={16}/> עריכת כל פרטי התורם
+                               </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">מיקום מדויק</p><p className="text-xs font-bold">{selectedDonor.city}, {selectedDonor.street} {selectedDonor.building}</p></div>
-                               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[8px] font-black text-slate-400 uppercase mb-1">דירה / קומה</p><p className="text-xs font-bold">{selectedDonor.apartment || '0'} / {selectedDonor.floor || '0'}</p></div>
-                            </div>
-                            {selectedDonor.notes && (<div className="space-y-2"><p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mr-1">הערות כלליות</p><div className="bg-blue-50/30 p-3 rounded-xl border border-blue-100 flex gap-2"><ClipboardList size={14} className="text-blue-500 shrink-0" /><p className="text-[11px] font-bold text-blue-900 italic leading-relaxed">"{selectedDonor.notes}"</p></div></div>)}
-                            <button onClick={() => {setEditData(selectedDonor); setIsEditing(true);}} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] active:scale-95 shadow-lg flex items-center justify-center gap-2 mt-4 hover:bg-blue-700 transition-all"><Edit2 size={12}/> ערוך פרטי תורם</button>
                           </>
                         )}
                     </div>

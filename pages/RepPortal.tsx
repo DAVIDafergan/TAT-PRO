@@ -375,7 +375,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                           const isRepEligible = liveTotalRaised >= lotteryThreshold;
 
                           return (
-                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isRepEligible ? 'bg-emerald-50/30 dark:bg-emerald-900/5 border-emerald-100/50' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
+                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isRepEligible ? 'bg-orange-50/30 dark:bg-orange-900/5 border-orange-100' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
                                <div className="text-right">
                                   <p className="text-[13px] font-black text-slate-800 dark:text-white leading-none mb-1.5">{lottery.title}</p>
                                   <p className={`text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5 ${isRepEligible ? 'text-emerald-600' : 'text-slate-400'}`}>
@@ -427,7 +427,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
                 <div className="space-y-3">
                   {(donations || []).filter(d => d.representativeId === rep?.id).slice(0, 5).map(d => (
-                      <div key={d.id} className={`p-5 rounded-[24px] border flex items-center justify-between transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-50 shadow-sm'}`}>
+                      <div key={d.id} className={`p-5 rounded-[24px] border flex items-center justify-between transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
                           <div className="flex items-center gap-4">
                              <div className={`w-10 h-10 ${d.status === 'confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} rounded-xl flex items-center justify-center font-black text-lg`}>₪</div>
                              <div className="text-right">
