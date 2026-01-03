@@ -37,7 +37,7 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
   });
 
   const [groupFormData, setGroupFormData] = useState<Partial<CampaignGroup>>({
-    name: '', color: '#3b82f6', shnaton: 'תשפ"ו'
+    name: '', color: '#3b82f6', shnaton: 'תשפ"ו', goal: 250000 // הוספת יעד קבוצה
   });
 
   const [managerFormData, setManagerFormData] = useState<Partial<User>>({
@@ -45,7 +45,7 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
   });
 
   const [patrolFormData, setPatrolFormData] = useState<Partial<Patrol>>({
-    name: '', city: 'בני ברק', repIds: [], type: 'regular'
+    name: '', city: 'בני ברק', repIds: [], type: 'regular', goal: 100000 // הוספת יעד סיירת
   });
 
   // לוגיקה לחישוב שיעור לפי שנתון (מעודכן לתשפ"ו)
@@ -120,9 +120,9 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
     setEditRepId(null); setEditManagerId(null); setEditGroupId(null); setEditPatrolId(null);
     setPatrolRepSearch('');
     setFormData({ name: '', username: '', password: '', phone: '', email: '', groupId: '', personalGoal: 50000, loginMethod: 'credentials', otpOnly: false, classYear: '' });
-    setGroupFormData({ name: '', color: '#3b82f6', shnaton: 'תשפ"ו' });
+    setGroupFormData({ name: '', color: '#3b82f6', shnaton: 'תשפ"ו', goal: 250000 });
     setManagerFormData({ name: '', username: '', password: '', role: UserRole.CAMPAIGN_MANAGER, managerArea: '', allowedPages: ['dashboard', 'crm', 'donations'] });
-    setPatrolFormData({ name: '', city: 'בני ברק', repIds: [], type: 'regular' });
+    setPatrolFormData({ name: '', city: 'בני ברק', repIds: [], type: 'regular', goal: 100000 });
   };
 
   return (
@@ -211,6 +211,7 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
                  const currentShiur = calculateShiur(group.shnaton);
                  return (
                    <div key={group.id} className="p-6 rounded-[25px] border border-slate-100 bg-white shadow-sm flex flex-col group hover:shadow-lg transition-all relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-1.5 h-full opacity-50" style={{ backgroundColor: group.color }}></div>
                       <div className="flex items-center justify-between mb-4">
                          <div className="w-12 h-12 rounded-xl shadow-lg flex items-center justify-center text-white font-black text-lg" style={{ backgroundColor: group.color }}>{group.name.charAt(0)}</div>
                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -220,9 +221,16 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
                       </div>
                       <div>
                            <h3 className="font-black text-slate-900 text-lg leading-none mb-2">{group.name}</h3>
-                           <div className="flex items-center gap-3 mb-4">
+                           <div className="flex items-center gap-3 mb-2">
                               <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-black uppercase border border-blue-100">{currentShiur}</span>
                               <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">מחזור {group.shnaton}</span>
+                           </div>
+                           {/* תצוגת יעד קבוצה */}
+                           <div className="mb-4">
+                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">יעד קבוצתי: ₪{(group.goal || 0).toLocaleString()}</p>
+                             <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                               <div className="h-full bg-blue-600 opacity-30" style={{ width: '45%' }}></div>
+                             </div>
                            </div>
                            <div className="flex items-center justify-between pt-3 border-t border-slate-50">
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{reps.filter(r => r.groupId === group.id).length} נציגים</p>
@@ -252,7 +260,13 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
                             </div>
                         </div>
                         <h3 className="text-base font-black text-slate-900 mb-1">{patrol.name}</h3>
-                        <div className="flex items-center gap-2 mb-4"><MapPin size={10} className="text-slate-400"/><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{patrol.city}</span></div>
+                        <div className="flex items-center justify-between mb-4">
+                           <div className="flex items-center gap-2"><MapPin size={10} className="text-slate-400"/><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{patrol.city}</span></div>
+                           {/* תצוגת יעד סיירת */}
+                           <div className="text-left">
+                              <p className="text-[8px] font-black text-indigo-600 uppercase">יעד: ₪{(patrol.goal || 0).toLocaleString()}</p>
+                           </div>
+                        </div>
                         <div className="space-y-2">
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">נציגים משוייכים ({patrol.repIds.length})</p>
                             <div className="flex -space-x-2 rtl:space-x-reverse overflow-hidden">
@@ -302,7 +316,7 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
 
       {showModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
-           <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl animate-fade-in overflow-hidden border border-slate-100 my-auto">
+           <div className="bg-white rounded-[30px] w-full max-md shadow-2xl animate-fade-in overflow-hidden border border-slate-100 my-auto">
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
                  <h2 className="text-base font-black text-slate-900 tracking-tight italic">פרטי {activeTab === 'reps' ? 'נציג' : activeTab === 'patrols' ? 'סיירת' : activeTab === 'groups' ? 'קבוצת שנתון' : 'מנהל'}</h2>
                  <button onClick={closeModal} className="p-2 text-slate-400 hover:text-red-500 transition-all"><X size={18} /></button>
@@ -361,6 +375,8 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
                           </div>
                           <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase mr-1">צבע</label><input type="color" value={groupFormData.color} onChange={e => setGroupFormData({...groupFormData, color: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer p-1 bg-white border" /></div>
                        </div>
+                       {/* הוספת שדה יעד לקבוצה */}
+                       <div className="space-y-1"><label className="text-[9px] font-black text-blue-600 uppercase tracking-widest mr-1">יעד קבוצתי מצטבר (₪)</label><input type="number" value={groupFormData.goal} onChange={e => setGroupFormData({...groupFormData, goal: Number(e.target.value)})} className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 font-black text-sm outline-none focus:ring-2 ring-blue-500" /></div>
                        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
                           <Info size={16} className="text-blue-600 shrink-0" />
                           <div className="text-right">
@@ -383,6 +399,8 @@ const RepresentativesPage: React.FC<RepresentativesPageProps> = ({ reps, setReps
                                 </select>
                             </div>
                         </div>
+                        {/* הוספת שדה יעד לסיירת */}
+                        <div className="space-y-1"><label className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mr-1">יעד סיירת (₪)</label><input type="number" value={patrolFormData.goal} onChange={e => setPatrolFormData({...patrolFormData, goal: Number(e.target.value)})} className="w-full bg-indigo-50 border border-indigo-200 rounded-xl p-2.5 text-sm font-black outline-none focus:ring-2 ring-indigo-500" /></div>
                         <div className="space-y-2">
                             <label className="text-[9px] font-black text-slate-400 uppercase mr-1">שיוך נציגים ({patrolFormData.repIds?.length})</label>
                             
