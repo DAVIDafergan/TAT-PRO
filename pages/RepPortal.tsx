@@ -60,6 +60,19 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
   const isDark = theme === 'dark';
 
+  // פונקציית עזר להמרת סטטוס לטקסט בעברית
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'donated': return 'תרם';
+      case 'refused':
+      case 'not_donated': return 'לא תרם';
+      case 'not_home': return 'לא היה בבית';
+      case 'come_later':
+      case 'call_back': return 'לחזור אליו';
+      default: return '';
+    }
+  };
+
   // --- תיקון סנכרון: חישוב סכום גיוס חי בזמן אמת ---
   const liveTotalRaised = useMemo(() => {
     return (donations || [])
@@ -78,12 +91,12 @@ const RepPortal: React.FC<RepPortalProps> = ({
     .sort((a,b) => (a.minAmount || a.milestoneAmount || 0) - (b.minAmount || b.milestoneAmount || 0))[0], 
   [gifts, liveTotalRaised]);
 
-  // הצגת כל ההגרלות הפעילות במערכת
+  // הצגת כל ההגרלות הפעילות במערכת שהוגדרו בניהול
   const activeLotteriesList = useMemo(() => (lotteries || []).filter(l => l.status === 'active'), [lotteries]);
 
-  // סנכרון משימות מהמסד
-  const myActivePath = useMemo(() => (paths || []).find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
-  const myCallList = useMemo(() => (callLists || []).find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
+  // סנכרון משימות: רק המשימה האחרונה (החדשה) מוצגת
+  const myActivePath = useMemo(() => [...(paths || [])].reverse().find(p => p.assignedRepIds?.includes(rep?.id) || p.assignedRepIds?.includes(rep?.username)), [paths, rep]);
+  const myCallList = useMemo(() => [...(callLists || [])].reverse().find(cl => cl.assignedRepIds?.includes(rep?.id) || cl.assignedRepIds?.includes(rep?.username)), [callLists, rep]);
   
   // סינון הודעות רלוונטיות לנציג
   const myMessages = useMemo(() => (systemMessages || []).filter(m => 
@@ -322,7 +335,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                             <Sparkles className="text-emerald-600" size={24} />
                             <div>
                               <p className="text-xs font-black text-emerald-800 dark:text-emerald-400">הגעת לפסגה!</p>
-                              <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות שהוגדרו בקמפיין.</p>
+                              <p className="text-[10px] font-bold text-emerald-600/80 uppercase">זכית בכל המתנות בקמפיין זה.</p>
                             </div>
                         </div>
                       )
@@ -358,23 +371,25 @@ const RepPortal: React.FC<RepPortalProps> = ({
                    <div className="space-y-3">
                       {activeLotteriesList.length > 0 ? (
                         activeLotteriesList.map(lottery => {
-                          const isEligible = liveTotalRaised >= (lottery.minThreshold || 0);
+                          const lotteryThreshold = lottery.minThreshold || 0;
+                          const isRepEligible = liveTotalRaised >= lotteryThreshold;
+
                           return (
-                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isEligible ? 'bg-emerald-50/30 dark:bg-emerald-900/5 border-emerald-100/50' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
+                            <div key={lottery.id} className={`group flex items-center justify-between p-4 rounded-[22px] border transition-all ${isRepEligible ? 'bg-orange-50/30 dark:bg-orange-900/5 border-orange-100' : 'bg-slate-50/50 dark:bg-white/5 border-slate-100 dark:border-white/10'}`}>
                                <div className="text-right">
                                   <p className="text-[13px] font-black text-slate-800 dark:text-white leading-none mb-1.5">{lottery.title}</p>
-                                  <p className={`text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5 ${isEligible ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                     <Star size={10} fill={isEligible ? "currentColor" : "none"} /> פרס: {lottery.prize}
+                                  <p className={`text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5 ${isRepEligible ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                     <Star size={10} className={isRepEligible ? "text-orange-500" : "text-slate-300"} fill={isRepEligible ? "currentColor" : "none"} /> פרס: {lottery.prize}
                                   </p>
                                </div>
-                               {isEligible ? (
+                               {isRepEligible ? (
                                   <div className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-500/20 flex items-center gap-1">
                                       <Check size={10} strokeWidth={3} /> זכאי להשתתף
                                   </div>
                                ) : (
                                   <div className="text-left">
-                                      <p className="text-[8px] font-black text-slate-400 uppercase">נשאר עוד</p>
-                                      <p className="text-[11px] font-black text-slate-600 tabular-nums">₪{((lottery.minThreshold || 0) - liveTotalRaised).toLocaleString()}</p>
+                                      <p className="text-[8px] font-black text-slate-400 uppercase">נותר עוד</p>
+                                      <p className="text-[11px] font-black text-slate-600 tabular-nums">₪{(lotteryThreshold - liveTotalRaised).toLocaleString()}</p>
                                   </div>
                                )}
                             </div>
@@ -383,7 +398,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                       ) : (
                         <div className="text-center py-6 bg-slate-50 dark:bg-white/5 rounded-3xl border border-dashed border-slate-200 dark:border-white/10">
                            <Ticket className="mx-auto text-slate-300 mb-2 opacity-30" size={32} />
-                           <p className="text-[11px] text-slate-400 font-bold uppercase italic tracking-widest">טרם פורסמו הגרלות</p>
+                           <p className="text-[11px] text-slate-400 font-bold uppercase italic tracking-widest">טרם פורסמו הגרלות פעילות</p>
                         </div>
                       )}
                    </div>
@@ -433,7 +448,6 @@ const RepPortal: React.FC<RepPortalProps> = ({
           </div>
         )}
 
-        {/* שאר הטאבים נשמרים ללא שינוי אות... */}
         {activeTab === 'calls' && (
             <div className="space-y-5 animate-fade-in flex flex-col w-full">
                 <div className="flex items-center justify-between px-2">
@@ -444,7 +458,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
                 <div className="space-y-4">
                   {(myCallList?.donors || []).map(donor => {
-                      const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated';
+                      const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated' || donor.treatmentStatus === 'not_home' || donor.treatmentStatus === 'come_later';
                       return (
                       <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
                           <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-14 h-14 rounded-[22px] flex items-center justify-center shrink-0 transition-all ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 group-hover:bg-orange-600 group-hover:text-white cursor-pointer'}`}>
@@ -458,9 +472,15 @@ const RepPortal: React.FC<RepPortalProps> = ({
                               <a href={`tel:${donor.phone}`} className="p-3.5 bg-orange-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
                                 <Phone size={20}/>
                               </a>
-                              <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
-                                <PlusCircle size={20}/>
-                              </button>
+                              {isHandled ? (
+                                <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl text-[10px] font-black uppercase shadow-sm flex items-center justify-center min-w-[80px]">
+                                   {getStatusLabel(donor.treatmentStatus)}
+                                </div>
+                              ) : (
+                                <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-emerald-500 text-white rounded-2xl shadow-lg active:scale-90 transition-all">
+                                  <PlusCircle size={20}/>
+                                </button>
+                              )}
                           </div>
                       </div>
                   )})}
@@ -497,7 +517,7 @@ const RepPortal: React.FC<RepPortalProps> = ({
 
               <div className="space-y-4">
                 {(myActivePath?.addresses || []).map((donor, idx) => {
-                   const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated';
+                   const isHandled = donor.treatmentStatus === 'donated' || donor.treatmentStatus === 'not_donated' || donor.treatmentStatus === 'not_home' || donor.treatmentStatus === 'come_later';
                    return (
                    <div key={donor.id} className={`rounded-[32px] border p-5 flex items-center gap-4 group transition-all ${isDark ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-sm'} ${isHandled ? 'opacity-60 bg-slate-50' : ''}`}>
                       <div onClick={!isHandled ? () => handleReportVisit(donor) : undefined} className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${isHandled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white cursor-pointer'}`}>
@@ -507,9 +527,16 @@ const RepPortal: React.FC<RepPortalProps> = ({
                          <h4 className="text-[14px] font-black truncate">{donor.firstName} {donor.lastName}</h4>
                          <p className="text-[10px] text-slate-400 font-bold truncate flex items-center gap-1 mt-0.5 justify-end"><MapPin size={10}/> {(donor.street || '')} {(donor.building || '')}</p>
                       </div>
-                      <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
-                        <PlusCircle size={24}/>
-                      </button>
+                      
+                      {isHandled ? (
+                        <div className="px-5 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl text-[10px] font-black uppercase shadow-sm flex items-center justify-center min-w-[90px]">
+                           {getStatusLabel(donor.treatmentStatus)}
+                        </div>
+                      ) : (
+                        <button onClick={() => handleReportVisit(donor)} className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl active:scale-90 transition-all shrink-0">
+                          <PlusCircle size={24}/>
+                        </button>
+                      )}
                    </div>
                 )})}
               </div>
