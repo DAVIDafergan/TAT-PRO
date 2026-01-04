@@ -39,7 +39,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [newDonor, setNewDonor] = useState<any>({ 
-    firstName: '', lastName: '', city: 'בני ברק', street: '', building: '', floor: '', apartment: '', addressNotes: '',
+    firstName: '', lastName: '', city: '', street: '', building: '', floor: '', apartment: '', addressNotes: '',
     phone: '', preferences: ['general_visit'], connectionType: 'general', connectionDetail: '', potentialRank: 3, notes: '',
     assignedRepIds: [], treatmentStatus: 'available', callbackTime: ''
   });
@@ -48,10 +48,8 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
 
   // Google Maps Autocomplete
   const placesLib = useMapsLibrary('places');
-  const crmCityRef = useRef<HTMLInputElement>(null);
-  const crmStreetRef = useRef<HTMLInputElement>(null);
-  const editCityRef = useRef<HTMLInputElement>(null);
-  const editStreetRef = useRef<HTMLInputElement>(null);
+  const crmAddressRef = useRef<HTMLInputElement>(null);
+  const editAddressRef = useRef<HTMLInputElement>(null);
 
   const togglePreference = (pref: DonorPreference) => {
     setNewDonor((prev: any) => {
@@ -63,40 +61,56 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
     });
   };
 
-  useEffect(() => {
-    if (!placesLib || !crmCityRef.current || !showSingleDonorModal) return;
-    
-    const cityAutocomplete = new placesLib.Autocomplete(crmCityRef.current, { types: ['(cities)'], componentRestrictions: { country: 'il' } });
-    cityAutocomplete.addListener('place_changed', () => {
-      const place = cityAutocomplete.getPlace();
-      if (place.name) setNewDonor((prev: any) => ({ ...prev, city: place.name! }));
-    });
+  // פונקציית עזר לפירוק כתובת מגוגל
+  const handlePlaceSelect = (place: google.maps.places.PlaceResult, isEdit: boolean) => {
+    let city = '';
+    let street = '';
+    let building = '';
 
-    if (crmStreetRef.current) {
-      const streetAutocomplete = new placesLib.Autocomplete(crmStreetRef.current, { types: ['address'], componentRestrictions: { country: 'il' } });
-      streetAutocomplete.addListener('place_changed', () => {
-        const place = streetAutocomplete.getPlace();
-        if (place.name) setNewDonor((prev: any) => ({ ...prev, street: place.name! }));
+    if (place.address_components) {
+      place.address_components.forEach(component => {
+        const types = component.types;
+        if (types.includes('locality')) city = component.long_name;
+        if (types.includes('route')) street = component.long_name;
+        if (types.includes('street_number')) building = component.long_name;
       });
     }
+
+    if (isEdit) {
+      setEditData((prev: any) => ({ ...prev, city, street, building }));
+    } else {
+      setNewDonor((prev: any) => ({ ...prev, city, street, building }));
+    }
+  };
+
+  useEffect(() => {
+    if (!placesLib || !crmAddressRef.current || !showSingleDonorModal) return;
+    
+    const autocomplete = new placesLib.Autocomplete(crmAddressRef.current, { 
+      types: ['address'], 
+      componentRestrictions: { country: 'il' },
+      fields: ['address_components', 'geometry']
+    });
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      handlePlaceSelect(place, false);
+    });
   }, [placesLib, showSingleDonorModal]);
 
   useEffect(() => {
-    if (!placesLib || !editCityRef.current || !isEditing) return;
+    if (!placesLib || !editAddressRef.current || !isEditing) return;
     
-    const cityAutocomplete = new placesLib.Autocomplete(editCityRef.current, { types: ['(cities)'], componentRestrictions: { country: 'il' } });
-    cityAutocomplete.addListener('place_changed', () => {
-      const place = cityAutocomplete.getPlace();
-      if (place.name) setEditData((prev: any) => ({ ...prev, city: place.name! }));
+    const autocomplete = new placesLib.Autocomplete(editAddressRef.current, { 
+      types: ['address'], 
+      componentRestrictions: { country: 'il' },
+      fields: ['address_components', 'geometry']
     });
 
-    if (editStreetRef.current) {
-      const streetAutocomplete = new placesLib.Autocomplete(editStreetRef.current, { types: ['address'], componentRestrictions: { country: 'il' } });
-      streetAutocomplete.addListener('place_changed', () => {
-        const place = streetAutocomplete.getPlace();
-        if (place.name) setEditData((prev: any) => ({ ...prev, street: place.name! }));
-      });
-    }
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      handlePlaceSelect(place, true);
+    });
   }, [placesLib, isEditing]);
 
   const getConnectionLabel = (type: ConnectionType) => {
@@ -169,7 +183,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
     };
     setDonors(prev => [donor, ...prev]);
     setShowSingleDonorModal(false);
-    setNewDonor({ firstName: '', lastName: '', city: 'בני ברק', street: '', building: '', floor: '', apartment: '', addressNotes: '', phone: '', preferences: ['general_visit'], connectionType: 'general', potentialRank: 3, notes: '', assignedRepIds: [], treatmentStatus: 'available' });
+    setNewDonor({ firstName: '', lastName: '', city: '', street: '', building: '', floor: '', apartment: '', addressNotes: '', phone: '', preferences: ['general_visit'], connectionType: 'general', potentialRank: 3, notes: '', assignedRepIds: [], treatmentStatus: 'available' });
   };
 
   const handleDeleteDonor = (id: string) => {
@@ -301,7 +315,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
       </div>
 
       <div className="grid grid-cols-12 gap-8">
-        <div className={selectedDonor ? 'col-span-12 lg:col-span-8' : 'col-span-12'}>
+        <div className="col-span-12">
             <div className="bg-white rounded-[35px] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
                 <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                     <h3 className="text-sm font-black text-slate-900 flex items-center gap-2"><ClipboardList size={18} className="text-blue-600"/> רשימת תורמים ({sortedAndFilteredDonors.length})</h3>
@@ -344,10 +358,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
             </div>
         </div>
 
+        {/* מודל כרטיס תורם - כעת מרכזי */}
         {selectedDonor && (
-            <div className="col-span-12 lg:col-span-4 animate-fade-in">
-                <div className="bg-white rounded-[35px] border border-slate-200 shadow-xl overflow-hidden sticky top-8">
-                    {/* כרטיס תורם מלא - צד שמאל/תחתון */}
+            <div className="fixed inset-0 z-[800] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-[35px] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
                     <div className="p-6 bg-slate-900 text-white relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full -mr-16 -mt-16"></div>
                         <div className="flex gap-2 absolute top-4 left-4 z-20">
@@ -368,7 +382,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                         </div>
                     </div>
 
-                    <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto scroll-hide">
+                    <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto scroll-hide">
                         {isEditing ? (
                           <div className="space-y-5 animate-fade-in">
                              <div className="grid grid-cols-2 gap-4">
@@ -376,9 +390,15 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                                 <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">שם משפחה</label><input value={editData.lastName} onChange={e => setEditData({...editData, lastName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" /></div>
                              </div>
                              <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">טלפון</label><input value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" /></div>
+                             
+                             <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase mr-1">חיפוש כתובת חדשה (גוגל)</label>
+                                <input ref={editAddressRef} placeholder="הקלד כתובת לעדכון..." className="w-full bg-blue-50 border border-blue-200 p-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-100" />
+                             </div>
+
                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">עיר</label><input ref={editCityRef} value={editData.city} onChange={e => setEditData({...editData, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
-                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">רחוב</label><input ref={editStreetRef} value={editData.street} onChange={e => setEditData({...editData, street: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">עיר</label><input readOnly value={editData.city} className="w-full bg-slate-100 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none cursor-not-allowed" /></div>
+                                <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">רחוב</label><input readOnly value={editData.street} className="w-full bg-slate-100 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none cursor-not-allowed" /></div>
                              </div>
                              <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase mr-1">בניין</label><input value={editData.building} onChange={e => setEditData({...editData, building: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs font-bold outline-none" /></div>
@@ -390,7 +410,6 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                           </div>
                         ) : (
                           <>
-                            {/* הצגת כל המידע ללא יוצא מן הכלל */}
                             <div className="space-y-4">
                                <div className="flex items-center justify-between p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
                                    <div className="flex items-center gap-2"><Activity size={16} className="text-blue-600"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">מצב נוכחי</span></div>
@@ -401,19 +420,19 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                                    <div className="flex items-start gap-4">
                                       <MapPin size={18} className="text-slate-400 mt-1"/>
                                       <div>
-                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">כתובת מלאה</p>
-                                         <p className="text-sm font-bold text-slate-900">{selectedDonor.city}, {selectedDonor.street} {selectedDonor.building}</p>
-                                         <p className="text-xs text-slate-500 font-medium">קומה {selectedDonor.floor || '0'}, דירה {selectedDonor.apartment || '0'}</p>
-                                         {selectedDonor.addressNotes && <p className="text-[10px] text-blue-600 font-bold mt-1">📍 {selectedDonor.addressNotes}</p>}
+                                          <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">כתובת מלאה</p>
+                                          <p className="text-sm font-bold text-slate-900">{selectedDonor.city}, {selectedDonor.street} {selectedDonor.building}</p>
+                                          <p className="text-xs text-slate-500 font-medium">קומה {selectedDonor.floor || '0'}, דירה {selectedDonor.apartment || '0'}</p>
+                                          {selectedDonor.addressNotes && <p className="text-[10px] text-blue-600 font-bold mt-1">📍 {selectedDonor.addressNotes}</p>}
                                       </div>
                                    </div>
                                    <div className="h-px bg-slate-200"></div>
                                    <div className="flex items-start gap-4">
                                       <Users size={18} className="text-slate-400 mt-1"/>
                                       <div>
-                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">שיוך ופירוט קשר</p>
-                                         <p className="text-sm font-bold text-slate-900">{getConnectionLabel(selectedDonor.connectionType)}</p>
-                                         {selectedDonor.connectionDetail && <p className="text-xs text-slate-500 font-medium">{selectedDonor.connectionDetail}</p>}
+                                          <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">שיוך ופירוט קשר</p>
+                                          <p className="text-sm font-bold text-slate-900">{getConnectionLabel(selectedDonor.connectionType)}</p>
+                                          {selectedDonor.connectionDetail && <p className="text-xs text-slate-500 font-medium">{selectedDonor.connectionDetail}</p>}
                                       </div>
                                    </div>
                                    {getDonorDonationInfo(selectedDonor.phone).total > 0 && (
@@ -435,8 +454,8 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                                  <div className="space-y-2">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">הערות תורם</p>
                                     <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100 flex gap-3 italic">
-                                       <ClipboardList size={16} className="text-amber-500 shrink-0" />
-                                       <p className="text-[12px] font-bold text-amber-900 leading-relaxed">"{selectedDonor.notes}"</p>
+                                        <ClipboardList size={16} className="text-amber-500 shrink-0" />
+                                        <p className="text-[12px] font-bold text-amber-900 leading-relaxed">"{selectedDonor.notes}"</p>
                                     </div>
                                  </div>
                                )}
@@ -447,8 +466,8 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                                       {getAssignedRepsForDonor(selectedDonor.id, selectedDonor.assignedRepIds).length > 0 ? (
                                         getAssignedRepsForDonor(selectedDonor.id, selectedDonor.assignedRepIds).map(r => (
                                           <div key={r.id} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                             <div className="w-5 h-5 bg-blue-600 rounded-lg text-[10px] text-white flex items-center justify-center font-black">{r.name[0]}</div>
-                                             <span className="text-xs font-bold text-slate-700">{r.name}</span>
+                                              <div className="w-5 h-5 bg-blue-600 rounded-lg text-[10px] text-white flex items-center justify-center font-black">{r.name[0]}</div>
+                                              <span className="text-xs font-bold text-slate-700">{r.name}</span>
                                           </div>
                                         ))
                                       ) : (
@@ -472,38 +491,38 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-[700] flex items-start justify-center p-4 bg-slate-950/80 backdrop-blur-sm pt-10">
-           <div className="bg-white rounded-[35px] w-full max-w-xl shadow-2xl p-8 border border-slate-100 animate-in zoom-in-95 duration-300">
-              <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-xl font-black text-slate-900 italic">ייבוא <span className="text-emerald-600">SMART IMPORT</span></h2>
-                 <button onClick={() => setShowImportModal(false)} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-red-500 transition-all"><X size={20}/></button>
-              </div>
-              <div className="space-y-6">
-                 <div className="bg-blue-50 p-5 rounded-3xl border border-blue-100 space-y-3">
-                    <p className="text-xs font-black text-blue-700 flex items-center gap-2"><AlertTriangle size={16}/> הנחיות חשובות:</p>
-                    <ul className="text-[11px] font-bold text-blue-900 list-disc list-inside space-y-1.5">
-                       <li>כל תורם חדש שמיובא יוגדר אוטומטית כסטטוס <b>"פנוי"</b>.</li>
-                       <li>גוגל מפות ינסה לאמת כל כתובת (ייתכנו כתובות שלא יזוהו).</li>
-                       <li>יש להשתמש בשמות העמודות בדיוק כפי שמופיע בקובץ לדוגמה.</li>
-                    </ul>
-                    <button onClick={downloadTemplate} className="text-xs font-black text-blue-600 underline hover:text-blue-800 flex items-center gap-1"><Download size={14}/> הורד תבנית לדוגמה</button>
-                 </div>
-                 <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">בחר סיווג לייבוא</label>
-                    <div className="grid grid-cols-3 gap-2">
-                       {['telephonic', 'purim_day', 'general_visit'].map((p: any) => (
-                         <button key={p} onClick={() => setImportClassification(p)} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === p ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-white'}`}>
-                           {p === 'telephonic' ? '📞 טלפוני' : p === 'purim_day' ? '🎭 פורים' : '🏠 בית'}
-                         </button>
-                       ))}
-                    </div>
-                 </div>
-                 <div className="relative border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-emerald-400 transition-all bg-slate-50/30">
-                    <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    <Upload size={32} className="mx-auto text-slate-300 mb-2" />
-                    <p className="text-xs font-black text-slate-500">לחץ להעלאת קובץ אקסל</p>
-                 </div>
-              </div>
-           </div>
+            <div className="bg-white rounded-[35px] w-full max-w-xl shadow-2xl p-8 border border-slate-100 animate-in zoom-in-95 duration-300">
+               <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-black text-slate-900 italic">ייבוא <span className="text-emerald-600">SMART IMPORT</span></h2>
+                  <button onClick={() => setShowImportModal(false)} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-red-500 transition-all"><X size={20}/></button>
+               </div>
+               <div className="space-y-6">
+                  <div className="bg-blue-50 p-5 rounded-3xl border border-blue-100 space-y-3">
+                     <p className="text-xs font-black text-blue-700 flex items-center gap-2"><AlertTriangle size={16}/> הנחיות חשובות:</p>
+                     <ul className="text-[11px] font-bold text-blue-900 list-disc list-inside space-y-1.5">
+                        <li>כל תורם חדש שמיובא יוגדר אוטומטית כסטטוס <b>"פנוי"</b>.</li>
+                        <li>גוגל מפות ינסה לאמת כל כתובת (ייתכנו כתובות שלא יזוהו).</li>
+                        <li>יש להשתמש בשמות העמודות בדיוק כפי שמופיע בקובץ לדוגמה.</li>
+                     </ul>
+                     <button onClick={downloadTemplate} className="text-xs font-black text-blue-600 underline hover:text-blue-800 flex items-center gap-1"><Download size={14}/> הורד תבנית לדוגמה</button>
+                  </div>
+                  <div className="space-y-3">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">בחר סיווג לייבוא</label>
+                     <div className="grid grid-cols-3 gap-2">
+                        {['telephonic', 'purim_day', 'general_visit'].map((p: any) => (
+                          <button key={p} onClick={() => setImportClassification(p)} className={`py-3 rounded-xl border text-[10px] font-black transition-all ${importClassification === p ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-white'}`}>
+                            {p === 'telephonic' ? '📞 טלפוני' : p === 'purim_day' ? '🎭 פורים' : '🏠 בית'}
+                          </button>
+                        ))}
+                     </div>
+                  </div>
+                  <div className="relative border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-emerald-400 transition-all bg-slate-50/30">
+                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} className="absolute inset-0 opacity-0 cursor-pointer" />
+                     <Upload size={32} className="mx-auto text-slate-300 mb-2" />
+                     <p className="text-xs font-black text-slate-500">לחץ להעלאת קובץ אקסל</p>
+                  </div>
+               </div>
+            </div>
         </div>
       )}
 
@@ -538,10 +557,22 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
                            </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">עיר (גוגל מפות)</label><input ref={crmCityRef} value={newDonor.city} onChange={e => setNewDonor({...newDonor, city: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" /></div>
-                       <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">רחוב (גוגל מפות)</label><input ref={crmStreetRef} value={newDonor.street} onChange={e => setNewDonor({...newDonor, street: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" /></div>
+                    
+                    {/* שדה כתובת גוגל מאוחד */}
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-600 uppercase mr-1 flex items-center gap-1"><MapPin size={10}/> כתובת מלאה (חיפוש גוגל מפות)</label>
+                        <input 
+                           ref={crmAddressRef} 
+                           placeholder="התחל להקליד עיר, רחוב ומספר..." 
+                           className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 ring-blue-400 transition-all" 
+                        />
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4 opacity-70">
+                       <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">עיר (זוהה)</label><input readOnly value={newDonor.city} className="w-full bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none cursor-not-allowed" /></div>
+                       <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">רחוב (זוהה)</label><input readOnly value={newDonor.street} className="w-full bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none cursor-not-allowed" /></div>
+                    </div>
+                    
                     <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">בניין</label><input value={newDonor.building} onChange={e => setNewDonor({...newDonor, building: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" /></div>
                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-500 uppercase mr-1">קומה</label><input value={newDonor.floor} onChange={e => setNewDonor({...newDonor, floor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" /></div>
