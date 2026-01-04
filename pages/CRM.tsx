@@ -142,7 +142,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
   const sortedAndFilteredDonors = useMemo(() => {
     let result = (donors || []).filter(d => {
       const donorDonation = getDonorDonationInfo(d.phone);
-      // אם תרם - הסטטוס הופך ל"בטיפול" באופן אוטומטי לצורך התצוגה
+      // אם תרם - הסטטוס הופך ל"תרם" באופן אוטומטי לצורך התצוגה
       const currentStatus = donorDonation.total > 0 ? 'donated' : d.treatmentStatus;
 
       const matchesPref = activeFilter === 'all' || d.preferences?.includes(activeFilter as DonorPreference);
@@ -358,10 +358,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ donors = [], setDonors, donations = [
             </div>
         </div>
 
-        {/* מודל כרטיס תורם - כעת מרכזי */}
+        {/* מודל כרטיס תורם - כעת מרכזי ומוצמד לראש הדף */}
         {selectedDonor && (
-            <div className="fixed inset-0 z-[800] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-[35px] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="fixed inset-0 z-[800] flex items-start justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in pt-10 overflow-y-auto">
+                <div className="bg-white rounded-[35px] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 mb-10">
                     <div className="p-6 bg-slate-900 text-white relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full -mr-16 -mt-16"></div>
                         <div className="flex gap-2 absolute top-4 left-4 z-20">

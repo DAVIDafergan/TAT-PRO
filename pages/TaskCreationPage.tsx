@@ -37,6 +37,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   const routesLib = useMapsLibrary('routes');
   const map = useMap();
   const cityInputRef = useRef<HTMLInputElement>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
 
   // Autocomplete לעיר - מופעל רק כשיש שדה (לא בשיחות)
   useEffect(() => {
@@ -58,12 +59,18 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   const calculateRoute = async (donorList: Donor[]) => {
     if (!routesLib || !map || donorList.length < 2) return;
 
+    // ניקוי מסלול קודם אם קיים
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+    }
+
     const directionsService = new routesLib.DirectionsService();
     const directionsRenderer = new routesLib.DirectionsRenderer({ 
         map, 
         suppressMarkers: false,
         polylineOptions: { strokeColor: '#2563eb', strokeWeight: 5, strokeOpacity: 0.8 }
     });
+    directionsRendererRef.current = directionsRenderer;
 
     const origin = `${donorList[0].street} ${donorList[0].building}, ${donorList[0].city}`;
     const destination = `${donorList[donorList.length - 1].street} ${donorList[donorList.length - 1].building}, ${donorList[donorList.length - 1].city}`;
@@ -87,7 +94,8 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
       destination,
       waypoints,
       travelMode: travelModeMap[currentTransport],
-      optimizeWaypoints: true,
+      // שים לב: אופטימיזציה לא עובדת במצב Transit (אוטובוסים)
+      optimizeWaypoints: currentTransport !== 'bus',
       transitOptions: currentTransport === 'bus' ? { 
         modes: [google.maps.TransitMode.BUS],
         routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS 
@@ -97,6 +105,9 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
         directionsRenderer.setDirections(result);
         // שמירת ה-Legs (הקטעים בין תורם לתורם)
         setRouteLegs(result.routes[0].legs); 
+      } else {
+        console.error('Directions request failed due to ' + status);
+        setRouteLegs([]);
       }
     });
   };
@@ -338,7 +349,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                  <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{donor.street} {donor.building}, {donor.city}</p>
                                  
                                  {/* הוראות גוגל מפורטות Turn-by-Turn בין הנקודות */}
-                                 {routeLegs[idx] && (
+                                 {routeLegs && routeLegs[idx] && (
                                    <div className="mt-4 space-y-4">
                                       <div className="flex items-center justify-between px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black border border-blue-100">
                                          <div className="flex items-center gap-2"><Clock size={12}/> {routeLegs[idx].duration.text}</div>
@@ -352,7 +363,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                              {step.transit ? (
                                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 space-y-2">
                                                   <div className="flex items-center gap-2 text-emerald-700 font-black text-[11px]">
-                                                    <Bus size={14} /> קו {step.transit.line.short_name}
+                                                    <Bus size={14} /> קו {step.transit.line.short_name || step.transit.line.name}
                                                   </div>
                                                   <div className="text-[10px] text-emerald-800 font-bold leading-relaxed">
                                                     עלה בתחנת {step.transit.departure_stop.name} <br/>
@@ -400,8 +411,10 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
               <button onClick={() => setShowCustomDonors(false)} className="p-2.5 text-slate-400 hover:text-red-500 transition-all hover:bg-red-50 rounded-full"><X size={24}/></button>
             </div>
             <div className="p-6 bg-slate-50 border-b">
-               <Search className="absolute right-10 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-               <input type="text" placeholder="חפש תורם..." value={donorSearch} onChange={e => setDonorSearch(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl pr-12 pl-4 py-4 text-sm font-bold outline-none shadow-sm focus:ring-4 ring-blue-50 transition-all" />
+               <div className="relative">
+                 <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                 <input type="text" placeholder="חפש תורם..." value={donorSearch} onChange={e => setDonorSearch(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl pr-12 pl-4 py-4 text-sm font-bold outline-none shadow-sm focus:ring-4 ring-blue-50 transition-all" />
+               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-hide">
               {purimDonors.map(donor => (
