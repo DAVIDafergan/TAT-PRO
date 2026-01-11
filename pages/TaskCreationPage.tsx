@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Donor, Representative, Path, CallList, Patrol } from '../types';
+import { Donor, Representative, Path, CallList, Patrol, Donation } from '../types';
 import { 
   MapPinned, PhoneCall, Search, Plus, X, Navigation, Clock, 
   Bus, Car, Footprints, Check, Send, FileText, Users, MapPin, 
@@ -13,6 +13,7 @@ import { db } from '../services/db'; // חיבור למסד הנתונים
 interface TaskCreationPageProps {
   donors: Donor[];
   setDonors: React.Dispatch<React.SetStateAction<Donor[]>>;
+  donations: Donation[]; // הוספת הפרופס של התרומות לסינכרון
   reps: Representative[];
   patrols: Patrol[]; 
   setPaths: React.Dispatch<React.SetStateAction<Path[]>>;
@@ -20,7 +21,7 @@ interface TaskCreationPageProps {
   activeCampaignId: string;
 }
 
-const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDonors, reps = [], patrols = [], setPaths, setCallLists, activeCampaignId }) => {
+const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDonors, donations = [], reps = [], patrols = [], setPaths, setCallLists, activeCampaignId }) => {
   const [activeTab, setActiveTab] = useState<'paths' | 'calls' | 'patrols'>('paths');
   const [repSearch, setRepSearch] = useState('');
   const [patrolSearch, setPatrolSearch] = useState('');
@@ -52,6 +53,13 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   const map = useMap();
   const cityInputRef = useRef<HTMLInputElement>(null);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+
+  // פונקציה לחישוב סך תרומות לתורם (תואם CRM)
+  const getDonorTotalConfirmed = (phone: string) => {
+    return donations
+      .filter(d => d.donorPhone === phone && d.status === 'confirmed')
+      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  };
 
   // Autocomplete לעיר
   useEffect(() => {
@@ -132,14 +140,14 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
   const filteredReps = useMemo(() => (reps || []).filter(r => r.name?.toLowerCase().includes(repSearch.toLowerCase())), [reps, repSearch]);
   
-  // --- לוגיקת סינון תורמים משופרת מותאמת ל-CRM של הישיבה ---
+  // --- לוגיקת סינון תורמים משופרת מותאמת ל-CRM של הישיבה - שמות שדות מתוקנים ---
   const purimDonors = useMemo(() => {
     const currentCity = activeTab === 'calls' ? '' : (activeTab === 'patrols' ? patrolForm.city : pathForm.city).trim().toLowerCase();
     
     return (donors || []).filter(d => {
       const cityMatch = !currentCity || d.city?.trim().toLowerCase().includes(currentCity);
       const statusMatch = !d.assignmentStatus || d.assignmentStatus === 'available' || d.assignmentStatus === 'potential';
-      const searchMatch = `${d.firstName} ${d.lastName}`.toLowerCase().includes(donorSearch.toLowerCase());
+      const searchMatch = `${d.firstName || ''} ${d.lastName || ''}`.toLowerCase().includes(donorSearch.toLowerCase());
       
       const isGeneral = d.preferences?.includes('general');
       let prefMatch = false;
@@ -148,17 +156,16 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
       if (activeTab === 'calls') prefMatch = d.preferences?.includes('telephonic') || isGeneral;
 
       if (activeTab === 'calls') {
-        const lastYear = d.donation2025 || 0; 
-        const twoYearsAgo = d.donation2024 || 0;
-        const totalLastTwo = lastYear + twoYearsAgo;
+        // חישוב תרומות לפי נתוני ה-CRM החיים
+        const totalDonated = getDonorTotalConfirmed(d.phone);
 
-        const minMatch = !callFilters.minDonation || totalLastTwo >= Number(callFilters.minDonation);
-        const maxMatch = !callFilters.maxDonation || totalLastTwo <= Number(callFilters.maxDonation);
+        const minMatch = !callFilters.minDonation || totalDonated >= Number(callFilters.minDonation);
+        const maxMatch = !callFilters.maxDonation || totalDonated <= Number(callFilters.maxDonation);
         
-        // פוטנציאל לפי כוכבים (נניח ש-potential בשדה הדאטה הוא מספר 1-5)
-        const potMatch = callFilters.potential === 'all' || Number(d.potential) >= Number(callFilters.potential);
+        // פוטנציאל לפי שדה potentialRank מה-CRM (מתואם לכוכבים)
+        const potMatch = callFilters.potential === 'all' || Number(d.potentialRank || 0) >= Number(callFilters.potential);
         
-        // סינון לפי קטגוריות CRM מדויקות
+        // סינון לפי קטגוריות CRM מדויקות (המפתחות באנגלית כפי שמופיעים ב-CRM)
         const connMatch = callFilters.connectionType === 'all' || d.connectionType === callFilters.connectionType;
 
         return statusMatch && prefMatch && searchMatch && minMatch && maxMatch && potMatch && connMatch;
@@ -166,7 +173,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
       return cityMatch && statusMatch && prefMatch && searchMatch;
     });
-  }, [donors, pathForm.city, patrolForm.city, activeTab, donorSearch, callFilters]);
+  }, [donors, pathForm.city, patrolForm.city, activeTab, donorSearch, callFilters, donations]);
 
   const toggleSelection = (id: string, list: string[], setList: (l: string[]) => void) => {
     setList(list.includes(id) ? list.filter(i => i !== id) : [...list, id]);
@@ -314,7 +321,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                   <input value={activeTab === 'calls' ? callForm.name : (activeTab === 'patrols' ? 'סיירת' : pathForm.name)} onChange={e => activeTab === 'calls' ? setCallForm({...callForm, name: e.target.value}) : setPathForm({...pathForm, name: e.target.value})} placeholder="לדוגמה: תורמי כבוד..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:bg-white transition-all" />
                 </div>
                 
-                {/* סינונים מתקדמים לשיחות בלבד */}
+                {/* סינונים מתקדמים לשיחות בלבד - שמות מזהים מתואמים ל-CRM */}
                 {activeTab === 'calls' && (
                   <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-4 animate-in slide-in-from-top-2">
                     <div className="flex justify-between items-center">
@@ -327,7 +334,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-slate-500">מינימום תרומה (שנתיים)</label>
+                        <label className="text-[8px] font-bold text-slate-500">מינימום תרומה (חי)</label>
                         <input type="number" value={callFilters.minDonation} onChange={e => setCallFilters({...callFilters, minDonation: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" placeholder="0" />
                       </div>
                       <div className="space-y-1">
@@ -341,12 +348,12 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                         <label className="text-[8px] font-bold text-slate-500">קשר לישיבה (CRM)</label>
                         <select value={callFilters.connectionType} onChange={e => setCallFilters({...callFilters, connectionType: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]">
                           <option value="all">הכל</option>
-                          <option value="תורם כללי / ידיד">תורם כללי / ידיד</option>
-                          <option value="בוגר הישיבה">בוגר הישיבה</option>
-                          <option value="הורה תלמיד / בוגר">הורה תלמיד / בוגר</option>
-                          <option value="משפחת צוות">משפחת צוות</option>
-                          <option value="משפחת תלמיד">משפחת תלמיד</option>
-                          <option value="שיוך אחר">שיוך אחר</option>
+                          <option value="general">תורם כללי \ ידיד</option>
+                          <option value="alumnus">בוגר הישיבה</option>
+                          <option value="parent">הורה תלמיד \ בוגר</option>
+                          <option value="staff_family">משפחת צוות</option>
+                          <option value="student_family">משפחת תלמיד</option>
+                          <option value="other">שיוך אחר</option>
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -354,28 +361,35 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                         <select value={callFilters.potential} onChange={e => setCallFilters({...callFilters, potential: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]">
                           <option value="all">הכל</option>
                           <option value="5">5 כוכבים ⭐</option>
-                          <option value="4">4 כוכבים ומעלה</option>
-                          <option value="3">3 כוכבים ומעלה</option>
-                          <option value="2">2 כוכבים ומעלה</option>
-                          <option value="1">1 כוכבים ומעלה</option>
+                          <option value="4">4 ומעלה</option>
+                          <option value="3">3 ומעלה</option>
+                          <option value="2">2 ומעלה</option>
+                          <option value="1">1 ומעלה</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-indigo-100">
+                    {!isBulkMode ? (
+                      <div className="pt-2 border-t border-indigo-100">
+                         <div className="space-y-1">
+                             <label className="text-[8px] font-bold text-slate-500">כמות שיחות להקצאה</label>
+                             <input type="number" value={callFilters.callsPerList} onChange={e => setCallFilters({...callFilters, callsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
+                         </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-indigo-100">
                         <div className="grid grid-cols-2 gap-2">
                            <div className="space-y-1">
-                             <label className="text-[8px] font-bold text-slate-500">כמות שיחות לרשימה</label>
+                             <label className="text-[8px] font-bold text-slate-500">שיחות לרשימה</label>
                              <input type="number" value={callFilters.callsPerList} onChange={e => setCallFilters({...callFilters, callsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
                            </div>
-                           {isBulkMode && (
-                             <div className="space-y-1 animate-in zoom-in-95">
+                           <div className="space-y-1 animate-in zoom-in-95">
                                <label className="text-[8px] font-bold text-slate-500">נציגים לרשימה</label>
                                <input type="number" value={callFilters.repsPerList} onChange={e => setCallFilters({...callFilters, repsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
-                             </div>
-                           )}
+                           </div>
                         </div>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -483,7 +497,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                 <div>
                                   <p className="text-base font-black text-slate-900">{donor.firstName} {donor.lastName}</p>
                                   <p className="text-[11px] font-bold text-slate-400 uppercase italic">
-                                    {donor.connectionType} | תרומה: ₪{(donor.donation2024 || 0) + (donor.donation2025 || 0)}
+                                    פוטנציאל: {donor.potentialRank}⭐ | תרומה: ₪{getDonorTotalConfirmed(donor.phone).toLocaleString()}
                                   </p>
                                 </div>
                               </div>
@@ -497,7 +511,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center text-slate-300">
                            <Layers size={40} className="mb-4 opacity-20"/>
-                           <p className="font-bold">בחר רשימה לצפייה מהתפריט</p>
+                           <p className="font-bold">בחר רשימה מהתפריט בצד לצפייה</p>
                         </div>
                       )}
                     </div>
