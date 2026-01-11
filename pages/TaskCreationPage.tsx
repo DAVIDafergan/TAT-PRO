@@ -3,7 +3,7 @@ import { Donor, Representative, Path, CallList, Patrol } from '../types';
 import { 
   MapPinned, PhoneCall, Search, Plus, X, Navigation, Clock, 
   Bus, Car, Footprints, Check, Send, FileText, Users, MapPin, 
-  Map as MapIcon, ChevronRight, ListChecks, Activity, Phone, Printer, Sliders, AlertCircle, Eye, ArrowRight, Filter, Layers, Zap
+  Map as MapIcon, ChevronRight, ListChecks, Activity, Phone, Printer, Sliders, AlertCircle, Eye, ArrowRight, Filter, Layers, Zap, Star
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -35,11 +35,13 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
   // --- מצבים חדשים לסינון וניהול רשימות שיחות ---
   const [pendingCallLists, setPendingCallLists] = useState<CallList[]>([]);
   const [selectedListIndex, setSelectedListIndex] = useState<number | null>(null);
+  const [isBulkMode, setIsBulkMode] = useState(false); // מצב ליצירת רשימות מרובות
+  
   const [callFilters, setCallFilters] = useState({
     minDonation: '',
     maxDonation: '',
-    potential: 'all' as 'all' | 'high' | 'medium' | 'low',
-    connectionType: 'all', // 'בוגר', 'הורה', 'ידיד' וכו'
+    potential: 'all', // יכיל דירוג כוכבים 1-5
+    connectionType: 'all', 
     callsPerList: 20,
     repsPerList: 1
   });
@@ -130,32 +132,33 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
 
   const filteredReps = useMemo(() => (reps || []).filter(r => r.name?.toLowerCase().includes(repSearch.toLowerCase())), [reps, repSearch]);
   
-  // --- לוגיקת סינון תורמים משופרת (כולל CRM וסכומים) ---
+  // --- לוגיקת סינון תורמים משופרת מותאמת ל-CRM של הישיבה ---
   const purimDonors = useMemo(() => {
     const currentCity = activeTab === 'calls' ? '' : (activeTab === 'patrols' ? patrolForm.city : pathForm.city).trim().toLowerCase();
     
     return (donors || []).filter(d => {
-      // סינון בסיסי
       const cityMatch = !currentCity || d.city?.trim().toLowerCase().includes(currentCity);
       const statusMatch = !d.assignmentStatus || d.assignmentStatus === 'available' || d.assignmentStatus === 'potential';
       const searchMatch = `${d.firstName} ${d.lastName}`.toLowerCase().includes(donorSearch.toLowerCase());
       
-      // סינון לפי העדפת משימה
       const isGeneral = d.preferences?.includes('general');
       let prefMatch = false;
       if (activeTab === 'paths') prefMatch = d.preferences?.includes('general_visit') || isGeneral;
       if (activeTab === 'patrols') prefMatch = d.preferences?.includes('purim_day') || isGeneral;
       if (activeTab === 'calls') prefMatch = d.preferences?.includes('telephonic') || isGeneral;
 
-      // סינוני CRM ספציפיים לשיחות
       if (activeTab === 'calls') {
-        const lastYear = d.donation2025 || 0; // הנחה על שמות שדות ב-CRM
+        const lastYear = d.donation2025 || 0; 
         const twoYearsAgo = d.donation2024 || 0;
         const totalLastTwo = lastYear + twoYearsAgo;
 
         const minMatch = !callFilters.minDonation || totalLastTwo >= Number(callFilters.minDonation);
         const maxMatch = !callFilters.maxDonation || totalLastTwo <= Number(callFilters.maxDonation);
-        const potMatch = callFilters.potential === 'all' || d.potential === callFilters.potential;
+        
+        // פוטנציאל לפי כוכבים (נניח ש-potential בשדה הדאטה הוא מספר 1-5)
+        const potMatch = callFilters.potential === 'all' || Number(d.potential) >= Number(callFilters.potential);
+        
+        // סינון לפי קטגוריות CRM מדויקות
         const connMatch = callFilters.connectionType === 'all' || d.connectionType === callFilters.connectionType;
 
         return statusMatch && prefMatch && searchMatch && minMatch && maxMatch && potMatch && connMatch;
@@ -169,7 +172,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
     setList(list.includes(id) ? list.filter(i => i !== id) : [...list, id]);
   };
 
-  // פונקציית יצירת רשימות מרובות
   const generateMultipleLists = () => {
     const selectedReps = callForm.selectedRepIds;
     if (selectedReps.length === 0) { alert("בחר לפחות נציג אחד"); return; }
@@ -180,20 +182,32 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
     }
 
     const newLists: CallList[] = [];
-    const repsPerList = callFilters.repsPerList;
-    const callsPerList = callFilters.callsPerList;
 
-    for (let i = 0; i < selectedReps.length; i += repsPerList) {
-      const groupReps = selectedReps.slice(i, i + repsPerList);
-      const groupDonors = donorPool.splice(0, callsPerList);
-      
-      if (groupDonors.length === 0) break;
+    if (isBulkMode) {
+      // יצירת רשימות מרובות
+      const repsPerList = callFilters.repsPerList;
+      const callsPerList = callFilters.callsPerList;
 
+      for (let i = 0; i < selectedReps.length; i += repsPerList) {
+        const groupReps = selectedReps.slice(i, i + repsPerList);
+        const groupDonors = donorPool.splice(0, callsPerList);
+        if (groupDonors.length === 0) break;
+
+        newLists.push({
+          id: Math.random().toString(36).substr(2, 9),
+          name: `${callForm.name || 'רשימת שיחות'} - קבוצה ${newLists.length + 1}`,
+          assignedRepIds: groupReps,
+          donors: groupDonors,
+          campaignId: activeCampaignId
+        });
+      }
+    } else {
+      // יצירת רשימה אחת בודדת
       newLists.push({
         id: Math.random().toString(36).substr(2, 9),
-        name: `${callForm.name || 'רשימת שיחות'} - קבוצה ${newLists.length + 1}`,
-        assignedRepIds: groupReps,
-        donors: groupDonors,
+        name: callForm.name || 'רשימת שיחות בודדת',
+        assignedRepIds: selectedReps,
+        donors: donorPool.slice(0, callFilters.callsPerList),
         campaignId: activeCampaignId
       });
     }
@@ -302,8 +316,15 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                 
                 {/* סינונים מתקדמים לשיחות בלבד */}
                 {activeTab === 'calls' && (
-                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-3 animate-in slide-in-from-top-2">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600 mb-2"><Filter size={12}/> פילטרים מה-CRM</div>
+                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-4 animate-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center">
+                       <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600"><Filter size={12}/> פילטרים מה-CRM</div>
+                       <div className="flex gap-1 bg-slate-200/50 p-1 rounded-full">
+                         <button onClick={() => setIsBulkMode(false)} className={`px-3 py-1 rounded-full text-[8px] font-black transition-all ${!isBulkMode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>בודדת</button>
+                         <button onClick={() => setIsBulkMode(true)} className={`px-3 py-1 rounded-full text-[8px] font-black transition-all ${isBulkMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500'}`}>מרובות</button>
+                       </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-500">מינימום תרומה (שנתיים)</label>
@@ -311,42 +332,48 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-500">מקסימום תרומה</label>
-                        <input type="number" value={callFilters.maxDonation} onChange={e => setCallFilters({...callFilters, maxDonation: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" placeholder="ללא הגבלה" />
+                        <input type="number" value={callFilters.maxDonation} onChange={e => setCallFilters({...callFilters, maxDonation: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" placeholder="ללא" />
                       </div>
                     </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-slate-500">קשר לישיבה</label>
+                        <label className="text-[8px] font-bold text-slate-500">קשר לישיבה (CRM)</label>
                         <select value={callFilters.connectionType} onChange={e => setCallFilters({...callFilters, connectionType: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]">
                           <option value="all">הכל</option>
-                          <option value="בוגר">בוגר</option>
-                          <option value="הורה">הורה</option>
-                          <option value="ידיד">ידיד</option>
+                          <option value="תורם כללי / ידיד">תורם כללי / ידיד</option>
+                          <option value="בוגר הישיבה">בוגר הישיבה</option>
+                          <option value="הורה תלמיד / בוגר">הורה תלמיד / בוגר</option>
+                          <option value="משפחת צוות">משפחת צוות</option>
+                          <option value="משפחת תלמיד">משפחת תלמיד</option>
+                          <option value="שיוך אחר">שיוך אחר</option>
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-slate-500">פוטנציאל</label>
-                        <select value={callFilters.potential} onChange={e => setCallFilters({...callFilters, potential: e.target.value as any})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]">
-                          <option value="all">כל הרמות</option>
-                          <option value="high">גבוה 🔥</option>
-                          <option value="medium">בינוני</option>
-                          <option value="low">נמוך</option>
+                        <label className="text-[8px] font-bold text-slate-500">פוטנציאל (כוכבים)</label>
+                        <select value={callFilters.potential} onChange={e => setCallFilters({...callFilters, potential: e.target.value})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]">
+                          <option value="all">הכל</option>
+                          <option value="5">5 כוכבים ⭐</option>
+                          <option value="4">4 כוכבים ומעלה</option>
+                          <option value="3">3 כוכבים ומעלה</option>
+                          <option value="2">2 כוכבים ומעלה</option>
+                          <option value="1">1 כוכבים ומעלה</option>
                         </select>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-indigo-100 mt-2">
-                        <div className="flex justify-between items-center mb-2">
-                           <label className="text-[9px] font-black text-indigo-600 uppercase">הגדרות חלוקה</label>
-                        </div>
+
+                    <div className="pt-2 border-t border-indigo-100">
                         <div className="grid grid-cols-2 gap-2">
                            <div className="space-y-1">
-                             <label className="text-[8px] font-bold text-slate-500">שיחות לרשימה</label>
+                             <label className="text-[8px] font-bold text-slate-500">כמות שיחות לרשימה</label>
                              <input type="number" value={callFilters.callsPerList} onChange={e => setCallFilters({...callFilters, callsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
                            </div>
-                           <div className="space-y-1">
-                             <label className="text-[8px] font-bold text-slate-500">נציגים לרשימה</label>
-                             <input type="number" value={callFilters.repsPerList} onChange={e => setCallFilters({...callFilters, repsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
-                           </div>
+                           {isBulkMode && (
+                             <div className="space-y-1 animate-in zoom-in-95">
+                               <label className="text-[8px] font-bold text-slate-500">נציגים לרשימה</label>
+                               <input type="number" value={callFilters.repsPerList} onChange={e => setCallFilters({...callFilters, repsPerList: Number(e.target.value)})} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px]" />
+                             </div>
+                           )}
                         </div>
                     </div>
                   </div>
@@ -369,15 +396,8 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                   )}
                 </div>
 
-                {activeTab === 'patrols' && (
-                 <div className="space-y-3 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 animate-in zoom-in-95">
-                    <div className="flex justify-between items-center"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">מרחק מקסימלי (מטרים)</label><span className="text-[10px] font-black text-blue-600">{patrolForm.maxDistance} מ'</span></div>
-                    <input type="range" min="100" max="2000" step="50" value={patrolForm.maxDistance} onChange={e => setPatrolForm({...patrolForm, maxDistance: Number(e.target.value)})} className="w-full h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                 </div>
-               )}
-
                 <div className="pt-4 border-t space-y-3">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1 block">בחירת נציגים לביצוע</label>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1 block">בחירת נציגים לשיבוץ</label>
                   <div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={14}/><input type="text" placeholder="חפש נציג..." value={repSearch} onChange={e => setRepSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 py-2.5 text-[10px] font-bold outline-none" /></div>
                   <div className="max-h-36 overflow-y-auto mt-2 space-y-1 scroll-hide pr-1">
                     {filteredReps.map(rep => (
@@ -389,12 +409,12 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                   </div>
                 </div>
 
-                <button type="button" onClick={() => setShowCustomDonors(true)} className="w-full py-3.5 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black border border-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"><ListChecks size={16}/> בחירת תורמים ספציפיים</button>
+                <button type="button" onClick={() => setShowCustomDonors(true)} className="w-full py-3.5 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black border border-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"><ListChecks size={16}/> בחירת תורמים ידנית</button>
             </div>
 
             <button onClick={finalizeTask} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-black uppercase tracking-widest">
               {activeTab === 'calls' ? <Zap size={18} className="text-yellow-400"/> : <Plus size={18}/>} 
-              {activeTab === 'calls' ? 'חולל רשימות לפי הגדרות' : 'חשב מסלול אופטימלי'}
+              {activeTab === 'calls' ? (isBulkMode ? 'חולל רשימות מרובות' : 'צור רשימה בודדת') : 'חשב מסלול גוגל'}
             </button>
           </div>
         </div>
@@ -425,7 +445,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
               <div className="flex-1 flex overflow-hidden">
                 {activeTab === 'calls' ? (
                   <div className="w-full flex">
-                    {/* תפריט רשימות (כשיוצרים מרובות) */}
                     {pendingCallLists.length > 0 && (
                       <div className="w-64 bg-slate-50 border-l overflow-y-auto p-4 space-y-2">
                         <p className="text-[9px] font-black text-slate-400 uppercase mb-3">רשימות שנוצרו</p>
@@ -441,7 +460,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       </div>
                     )}
 
-                    {/* הצגת תוכן הרשימה הנבחרת */}
                     <div className="flex-1 overflow-y-auto p-10 bg-white space-y-4 scroll-hide animate-fade-in text-right">
                       {selectedListIndex !== null && pendingCallLists[selectedListIndex] ? (
                         <>
@@ -465,7 +483,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                 <div>
                                   <p className="text-base font-black text-slate-900">{donor.firstName} {donor.lastName}</p>
                                   <p className="text-[11px] font-bold text-slate-400 uppercase italic">
-                                    {donor.connectionType} | תרומה משולבת: ₪{(donor.donation2024 || 0) + (donor.donation2025 || 0)}
+                                    {donor.connectionType} | תרומה: ₪{(donor.donation2024 || 0) + (donor.donation2025 || 0)}
                                   </p>
                                 </div>
                               </div>
@@ -479,7 +497,7 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center text-slate-300">
                            <Layers size={40} className="mb-4 opacity-20"/>
-                           <p className="font-bold">בחר רשימה מהתפריט בצד לצפייה</p>
+                           <p className="font-bold">בחר רשימה לצפייה מהתפריט</p>
                         </div>
                       )}
                     </div>
@@ -505,42 +523,6 @@ const TaskCreationPage: React.FC<TaskCreationPageProps> = ({ donors = [], setDon
                                 <div className="pb-2 min-w-0 flex-1">
                                   <p className="text-[14px] font-black text-slate-900 truncate leading-tight">{donor.firstName} {donor.lastName}</p>
                                   <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{donor.street} {donor.building}, {donor.city}</p>
-                                  {routeLegs && routeLegs[idx] && (
-                                    <div className="mt-4 space-y-4">
-                                       <div className="flex items-center justify-between px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black border border-blue-100">
-                                          <div className="flex items-center gap-2"><Clock size={12}/> {routeLegs[idx].duration.text}</div>
-                                          <div className="flex items-center gap-2"><ArrowRight size={12}/> {routeLegs[idx].distance.text}</div>
-                                       </div>
-                                       <div className="space-y-3 pr-3 border-r-2 border-slate-100">
-                                           {routeLegs[idx].steps.map((step: any, sIdx: number) => (
-                                            <div key={sIdx} className="relative">
-                                              {step.transit ? (
-                                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 space-y-2">
-                                                   <div className="flex items-center gap-2 text-emerald-700 font-black text-[11px]">
-                                                     <Bus size={14} /> קו {step.transit.line.short_name || step.transit.line.name}
-                                                   </div>
-                                                   <div className="text-[10px] text-emerald-800 font-bold leading-relaxed">
-                                                     עלה בתחנת {step.transit.departure_stop.name} <br/>
-                                                     רד בתחנת {step.transit.arrival_stop.name} ({step.transit.num_stops} תחנות)
-                                                   </div>
-                                                </div>
-                                              ) : (
-                                                <div className="flex items-start gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
-                                                  {step.travel_mode === 'WALKING' ? <Footprints size={12} className="mt-0.5 text-slate-400" /> : <Car size={12} className="mt-0.5 text-slate-400" />}
-                                                  <div 
-                                                    className="text-[10px] text-slate-600 font-bold leading-relaxed" 
-                                                    dangerouslySetInnerHTML={{ __html: step.instructions }} 
-                                                  />
-                                                </div>
-                                              )}
-                                              <div className="text-[8px] text-slate-400 font-black mt-1 mr-7">
-                                                {step.distance.text} · {step.duration.text}
-                                              </div>
-                                            </div>
-                                           ))}
-                                       </div>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             </div>
